@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Archive Ext",
+    "description": "Open a session's workspace folder in File Explorer from the session menu, and manage archived sessions with a grouped, searchable page supporting unarchive and confirmed permanent delete."
+  }
+}
