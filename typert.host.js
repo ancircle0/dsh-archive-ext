@@ -143,7 +143,7 @@ function strictCodec(typeSymbol, factory) {
 }
 
 export const TYPERT = {
-  package: "@ancircle-dsh-plugins/dsh-archive-ext",
+  package: "@ancircle0/dsh-archive-ext",
   face: "host",
   schemas: [],
   invocations: [

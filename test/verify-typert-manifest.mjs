@@ -7,7 +7,7 @@ const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.me
 const patch = readFileSync(new URL("../cordis.patch.yml", import.meta.url), "utf8");
 const serviceSource = readFileSync(new URL("../lib/service.js", import.meta.url), "utf8");
 
-assert.equal(TYPERT.package, "@ancircle-dsh-plugins/dsh-archive-ext");
+assert.equal(TYPERT.package, "@ancircle0/dsh-archive-ext");
 assert.equal(TYPERT.package, packageJson.name);
 assert.equal(TYPERT.face, "host");
 assert.equal(TYPERT.invocations.length, 5);
@@ -102,7 +102,7 @@ assert.ok(serviceSource.includes('"workspaceRegistry"'));
 assert.ok(serviceSource.includes('"sessionPersistence"'));
 
 assert.ok(patch.includes("- id: archive-ext"));
-assert.ok(patch.includes("@ancircle-dsh-plugins/dsh-archive-ext"));
+assert.ok(patch.includes("@ancircle0/dsh-archive-ext"));
 
 // Load the client bundle far enough to inspect its Remote contribution.
 const clientSource = readFileSync(new URL("../client.js", import.meta.url), "utf8");
@@ -130,7 +130,7 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(clientSource, sandbox);
 assert.ok(captured, "client bundle must register through the ModuleLoader");
-assert.equal(captured.id, "@ancircle-dsh-plugins/dsh-archive-ext");
+assert.equal(captured.id, "@ancircle0/dsh-archive-ext");
 
 const clientModule = captured.factory((id) => {
   if (id === "react") {

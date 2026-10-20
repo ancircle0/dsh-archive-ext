@@ -42,13 +42,25 @@
 
 ## 安装
 
-当前以本地目录安装为主（未发布到 npm）：
+从 npm 安装：
+
+```bash
+dsh plugin --profile desktop add @ancircle0/dsh-archive-ext
+```
+
+需要固定版本时：
+
+```bash
+dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.3
+```
+
+本地开发可直接使用仓库目录：
 
 ```bash
 dsh plugin --profile desktop add /path/to/dsh-archive-ext
 ```
 
-开发时也可以使用本机绝对路径（Windows 示例）：
+Windows 示例：
 
 ```bash
 dsh plugin --profile desktop add C:\path\to\dsh-archive-ext
@@ -59,7 +71,7 @@ dsh plugin --profile desktop add C:\path\to\dsh-archive-ext
 卸载：
 
 ```bash
-dsh plugin --profile desktop remove @ancircle-dsh-plugins/dsh-archive-ext
+dsh plugin --profile desktop remove @ancircle0/dsh-archive-ext
 ```
 
 > 桌面版 profile 由 Electron 应用管理；安装后请完全退出应用再启动，不要只刷新页面。

@@ -17,7 +17,7 @@
  */
 
 window.__ModuleLoader__.load({
-  id: "@ancircle-dsh-plugins/dsh-archive-ext",
+  id: "@ancircle0/dsh-archive-ext",
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;

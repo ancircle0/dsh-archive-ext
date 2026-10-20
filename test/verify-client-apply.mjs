@@ -63,7 +63,7 @@ vm.createContext(sandbox);
 vm.runInContext(source, sandbox);
 
 assert.ok(captured, "client bundle must register via window.__ModuleLoader__.load");
-assert.equal(captured.id, "@ancircle-dsh-plugins/dsh-archive-ext");
+assert.equal(captured.id, "@ancircle0/dsh-archive-ext");
 
 const React = {
   Fragment: Symbol("Fragment"),

@@ -1,4 +1,4 @@
-# PLAN — `@ancircle-dsh-plugins/dsh-archive-ext`（v1.23）
+# PLAN — `@ancircle0/dsh-archive-ext`（v1.25）
 
 > 本文件是本项目的**单一事实来源**。需求、范围、接口、边界、测试与验收以本文件为准。
 > 后续任何新增需求或修改，先更新本文件（含下方「变更记录」），再修改代码与测试。
@@ -8,7 +8,7 @@
 | 版本 | 日期 | 变更 | 影响 |
 |---|---|---|---|
 | v1.0 | 2026-10-19 | 初始计划：会话菜单打开资源管理器、归档管理页 | 建立架构、文件与验收基线 |
-| v1.1 | 2026-10-19 | 包名改为 `@ancircle-dsh-plugins/dsh-archive-ext`；明确第三方插件边界；加入计划同步机制 | 同步修改 bundle id、patch、TYPERT、client id、测试与文档；新增 `PLAN.md` |
+| v1.1 | 2026-10-19 | 包名确定为 `dsh-archive-ext`；明确第三方插件边界；加入计划同步机制 | 同步修改 bundle id、patch、TYPERT、client id、测试与文档；新增 `PLAN.md` |
 | v1.2 | 2026-10-19 | 测试执行方式改为 `node test/core.test.mjs`；工作区成员但无 session summary 的归档记录归入「无效的归档记录」 | 避免沙箱下 `node --test test/` 的子进程限制；让残留记录可被清理 |
 | v1.3 | 2026-10-19 | desktop profile 由 Electron 独占，CLI `--dump-config` 不可用；安装验证改为检查 profile `package.json` 的 `dsh.profile.bundles`、依赖项与 `node_modules` 链接 | 记录实际可行的安装验证方式 |
 | v1.4 | 2026-10-19 | 删除时若 `sessionPersistence.locate()` 抛错，返回 `locate-unavailable` 并保留归档记录，绝不误判为“日志已不存在” | 防止定位失败时误清归档记录或留下未删日志 |
@@ -31,6 +31,8 @@
 | v1.21 | 2026-10-20 | 文档中移除对某个第三方归档插件的名称引用，改为通用的“其他第三方插件”表述；删除对应的共存验收项 | 项目文档不再依赖/指向特定第三方插件 |
 | v1.22 | 2026-10-20 | 重构 README 为面向使用者的开源项目文档：简介、功能、兼容性、安装、使用、权限与数据、限制、开发、贡献、许可证；把入口位置、slot 选择、增强回退、验证细节等实现过程留在本文件 | README 不再承担实现记录；PLAN 作为实现与变更的唯一归档 |
 | v1.23 | 2026-10-20 | 按当前代码同步 PLAN：新增「方案演进与未采用方案」，明确工作区行没有官方菜单插槽、DOM 注入方案（v1.15–v1.17）为何放弃，以及当前用官方会话菜单承载「打开工作区文件夹」的取舍；修正文档与代码的细节差异（check 命令、constructor、错误码、removeArchivedSession、测试覆盖、安装路径等） | 计划与实现原理一致；后续维护者能理解为什么入口在会话菜单而不是工作区菜单 |
+| v1.24 | 2026-10-20 | 包名改为 `@ancircle0/dsh-archive-ext`，匹配已创建的 npm org；同步 package / patch / Typert / client loader / 测试 / README / LICENSE | 单包标识统一；旧名未发布，无迁移负担 |
+| v1.25 | 2026-10-20 | 准备 npm 公开发布：移除 `private`，增加 `publishConfig.access=public` 与 repository/homepage/bugs/author/keywords；README 安装章节改为 npm 优先，保留本地目录安装 | 包可 `npm publish`；用户可直接按包名安装 |
 
 ## 目标
 
@@ -53,7 +55,7 @@
 
 ## 已确认的决定
 
-- 新建独立插件，包名 `@ancircle-dsh-plugins/dsh-archive-ext`，版本 `0.1.3`，私有包。
+- 新建独立插件，包名 `@ancircle0/dsh-archive-ext`，版本 `0.1.3`，公开 npm 包（`publishConfig.access = "public"`）。
 - **放弃工作区行菜单的 DOM 注入**（v1.15–v1.17 的 `installWorkspaceMenuAction` / 归属识别 / 回退状态全部移除）：DSH 没有工作区菜单 slot，注入随宿主 DOM 变化易失效。菜单入口全部改用官方 `sidebar.workspaces.session.menu.item`。
 - 会话 “…” 菜单新增两个条目（均为官方 slot 条目，使用 `MenuItemButton`）：
   - `archive-ext.open-workspace-folder`，order 430，label「打开工作区文件夹」，图标文件夹；调用 `open({ sessionId })`，由 Host 解析该会话所属工作区目录（工作区路径优先，回退 live/persisted `cwd`）。
@@ -168,7 +170,8 @@ dsh-archive-ext/
 
 ### package.json
 
-- `name: "@ancircle-dsh-plugins/dsh-archive-ext"`，`version: "0.1.3"`，`private: true`，`type: "module"`。
+- `name: "@ancircle0/dsh-archive-ext"`，`version: "0.1.3"`，`type: "module"`；无 `private`，`publishConfig.access = "public"`。
+- 发布元数据：`author`、`repository`、`homepage`、`bugs`、`keywords` 指向 `github.com/ancircle0/dsh-archive-ext`。
 - `main: "index.js"`。
 - `exports`：`.`、`./client`、`./typert`、`./cordis.patch.yml`、`./package.json`、`./locale/*.json`、`./icon`。
 - `files`：`index.js`、`client.js`、`typert.host.js`、`cordis.patch.yml`、`lib/*.js`、`locale/*.json`、`icon.svg`、`PLAN.md`、`README.md`、`LICENSE`。
@@ -183,12 +186,18 @@ dsh-archive-ext/
 - `dependencies`：`zod: "^4.4.3"`。
 - `scripts`：`check`、`test`、`verify`。
 
+### 发布
+
+- 版本号与 Git tag 对齐（当前 `0.1.3` / `v0.1.3`）；`npm publish --access public`，`publishConfig` 已声明 public。
+- README 安装命令以 npm 包名为主，保留本地目录安装供开发。
+- DSH 插件管理没有自动升级操作；升级需要卸载旧版本后再安装新版本。
+
 ### cordis.patch.yml
 
 ```yaml
 - insert:
     - id: archive-ext
-      name: '@ancircle-dsh-plugins/dsh-archive-ext'
+      name: '@ancircle0/dsh-archive-ext'
 ```
 
 ### locale / icon
@@ -236,7 +245,7 @@ dsh-archive-ext/
 
 ### typert.host.js
 
-- `package: "@ancircle-dsh-plugins/dsh-archive-ext"`，`face: "host"`。
+- `package: "@ancircle0/dsh-archive-ext"`，`face: "host"`。
 - 五条 invocation：
   - `dsh-archive-ext#archiveExt/restore`
   - `dsh-archive-ext#archiveExt/delete`
@@ -251,7 +260,7 @@ dsh-archive-ext/
 
 ### 基本约束
 
-- `window.__ModuleLoader__.load({ id: "@ancircle-dsh-plugins/dsh-archive-ext", factory })`。
+- `window.__ModuleLoader__.load({ id: "@ancircle0/dsh-archive-ext", factory })`。
 - `exports.inject = ["slots", "remote"]`。
 - `exports.CLIENT_REMOTE` 导出给测试；`package: "dsh-archive-ext"`。
 - `apply(ctx)`：`await ctx.remote.$mount(CLIENT_REMOTE)`，`ctx.get("remote.archiveExt")`。
