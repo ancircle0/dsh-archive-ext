@@ -3,7 +3,7 @@
  *
  * Hand-written TYPERT manifest consumed by DSH's typert-loader from the
  * package's `./typert` export. It describes the `archiveExt` Remote service so
- * the browser Client can call `ctx.remote.archiveExt.{restore,delete,state,open}`.
+ * the browser Client can call `ctx.remote.archiveExt.{restore,delete,state,open,openSessionStorage}`.
  *
  * Strict codecs carry BOTH `schema` (DSH < 0.1.7 reads the zod instance) and
  * `create` (DSH >= 0.1.7 requires a factory). Each version's validator only
@@ -208,12 +208,29 @@ export const TYPERT = {
       result: strictCodec("dsh-archive-ext#ArchiveExtOpenResult", openResultSchema),
       sourceLocation: { file: "index.js", line: 1, column: 1 },
     },
+    {
+      id: "dsh-archive-ext#archiveExt/openSessionStorage",
+      service: "archiveExt",
+      namespace: "archiveExt",
+      method: "openSessionStorage",
+      invocation: { kind: "direct" },
+      parameters: [
+        {
+          name: "request",
+          wire: "request",
+          source: "json",
+          codec: strictCodec("dsh-archive-ext#ArchiveExtOpenSessionStorageRequest", sessionRequestSchema),
+        },
+      ],
+      result: strictCodec("dsh-archive-ext#ArchiveExtOpenSessionStorageResult", openResultSchema),
+      sourceLocation: { file: "index.js", line: 1, column: 1 },
+    },
   ],
   model: {
     services: [
       {
         description:
-          "Archive extension service: open a session workspace in the file manager, and restore or permanently delete archived sessions.",
+          "Archive extension service: open a session's workspace or log directory in the file manager, and restore or permanently delete archived sessions.",
         summary: "Archive extension service.",
         tags: [],
         jsDoc:
@@ -257,6 +274,15 @@ export const TYPERT = {
             jsDoc:
               "/**\n * Open one session's workspace directory in the system file manager.\n * @param request - target session id.\n * @returns the opened path or a business failure.\n */",
           },
+          {
+            kind: "method",
+            name: "openSessionStorage",
+            signature:
+              "@Remote('openSessionStorage') async openSessionStorage(request: ArchiveExtOpenSessionStorageRequest): Promise<ArchiveExtOpenSessionStorageResult>",
+            summary: "Open the directory that stores one session's logs in the system file manager.",
+            jsDoc:
+              "/**\n * Open the directory that stores one session's logs in the system file\n * manager.\n * @param request - target session id.\n * @returns the opened path or a business failure.\n */",
+          },
         ],
         types: [
           {
@@ -284,12 +310,23 @@ export const TYPERT = {
           },
           {
             name: "ArchiveExtOpenRequest",
-            declaration: "export interface ArchiveExtOpenRequest {\n    readonly sessionId: SessionId;\n}",
+            declaration:
+              "export interface ArchiveExtOpenRequest {\n    readonly sessionId: SessionId;\n}",
           },
           {
             name: "ArchiveExtOpenResult",
             declaration:
               "export type ArchiveExtOpenResult = { ok: true; value: { path: string } } | { ok: false; error: { code: string; message?: string } };",
+          },
+          {
+            name: "ArchiveExtOpenSessionStorageRequest",
+            declaration:
+              "export interface ArchiveExtOpenSessionStorageRequest {\n    readonly sessionId: SessionId;\n}",
+          },
+          {
+            name: "ArchiveExtOpenSessionStorageResult",
+            declaration:
+              "export type ArchiveExtOpenSessionStorageResult = { ok: true; value: { path: string } } | { ok: false; error: { code: string; message?: string } };",
           },
           {
             name: "SessionId",

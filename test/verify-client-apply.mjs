@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("./client.js", import.meta.url), "utf8");
+const source = readFileSync(new URL("../client.js", import.meta.url), "utf8");
 let captured;
-const styleElement = { textContent: "", remove() {} };
+const createdElements = [];
 const storage = new Map();
 const sandbox = {
   window: {
@@ -23,11 +23,36 @@ const sandbox = {
     },
   },
   document: {
-    createElement: () => styleElement,
-    head: { appendChild() {} },
+    createElement() {
+      const element = {
+        textContent: "",
+        attributes: {},
+        removed: false,
+        setAttribute(name, value) {
+          this.attributes[name] = String(value);
+        },
+        remove() {
+          this.removed = true;
+        },
+      };
+      createdElements.push(element);
+      return element;
+    },
+    head: {
+      children: [],
+      appendChild(element) {
+        this.children.push(element);
+      },
+    },
+    body: {},
     documentElement: { lang: "zh-CN" },
+    querySelectorAll: () => [],
     addEventListener() {},
     removeEventListener() {},
+  },
+  MutationObserver: class {
+    observe() {}
+    disconnect() {}
   },
   navigator: { language: "zh-CN" },
   console,
@@ -102,8 +127,9 @@ const ctx = {
           localeRegistrations.push({ namespace, dictionaries });
           return () => {};
         },
-        bind() {
-          return (key) => key;
+        bind(namespace) {
+          const workspaceLabels = { rename: "重命名", "delete.workspace": "删除工作区" };
+          return (key) => (namespace === "workspace" && workspaceLabels[key]) || key;
         },
       };
     }
@@ -129,13 +155,27 @@ await module.apply(ctx);
 
 assert.ok(mounted, "apply must mount the archiveExt Remote namespace");
 assert.equal(mounted.package, "dsh-archive-ext");
-assert.equal(mounted.descriptors.length, 4);
+assert.equal(mounted.descriptors.length, 5);
 assert.deepEqual([...mounted.descriptors.map((entry) => entry.method)].sort(), [
   "delete",
   "open",
+  "openSessionStorage",
   "restore",
   "state",
 ]);
+
+// apply wires the best-effort settings nav glyph (style kept even when no row
+// is mounted yet; the MutationObserver claims the row when the dialog opens).
+const navIconStyle = createdElements.find(
+  (element) => element.attributes["data-plugin-css"] === "archive-ext/settings-nav-icon",
+);
+assert.ok(navIconStyle, "apply must install the settings nav icon stylesheet");
+assert.match(navIconStyle.textContent, /mask-image/);
+assert.ok(sandbox.document.head.children.includes(navIconStyle));
+
+// The session-row entries are plain official-slot registrations; there is no
+// workspace-menu DOM enhancement any more.
+assert.equal(module.CLIENT_WORKSPACE_MENU, undefined);
 
 assert.deepEqual(injections.map((entry) => entry.key).sort(), [
   "settings.section",
@@ -143,21 +183,46 @@ assert.deepEqual(injections.map((entry) => entry.key).sort(), [
   "sidebar.panellist",
   "sidebar.workspaces.session.menu.item",
 ]);
-for (const injection of injections) injection.callback();
+for (const injection of injections) {
+  const result = injection.callback();
+  if (result && typeof result.next === "function") {
+    for (const _disposer of result) {
+      /* generators yield the individual registrations */
+    }
+  }
+}
 
-// Settings section, session menu and the hidden toast are always registered.
+// Settings section, session menu entries and the hidden toast are always registered.
 const settings = registrations.find((entry) => entry.options.name === "settings.section");
-const menu = registrations.find((entry) => entry.options.id === "archive-ext.open-in-explorer");
+const workspaceMenuEntry = registrations.find(
+  (entry) => entry.options.id === "archive-ext.open-workspace-folder",
+);
+const sessionMenuEntry = registrations.find(
+  (entry) => entry.options.id === "archive-ext.open-session-folder",
+);
 const toast = registrations.find((entry) => entry.options.id === "archive-ext.toast");
 assert.ok(settings, "settings.section registration");
 assert.equal(settings.options.id, "archive-ext");
 assert.equal(settings.options.order, 50);
 assert.equal(typeof settings.component, "function");
-assert.ok(menu, "session menu registration");
-assert.equal(menu.options.order, 430);
+assert.ok(workspaceMenuEntry, "open-workspace-folder registration");
+assert.equal(workspaceMenuEntry.options.name, "sidebar.workspaces.session.menu.item");
+assert.equal(workspaceMenuEntry.options.order, 430);
+assert.equal(typeof workspaceMenuEntry.component, "function");
+assert.ok(sessionMenuEntry, "open-session-folder registration");
+assert.equal(sessionMenuEntry.options.name, "sidebar.workspaces.session.menu.item");
+assert.equal(sessionMenuEntry.options.order, 440);
+assert.equal(typeof sessionMenuEntry.component, "function");
 assert.ok(toast, "toast registration");
 assert.equal(toast.options.name, "sidebar.footer.action");
 assert.equal(registrations.some((entry) => entry.options.id === "archive-ext.page"), false);
+
+const workspaceMenuInjected = workspaceMenuEntry.options.inject();
+assert.equal(typeof workspaceMenuInjected.t, "function");
+assert.equal(typeof workspaceMenuInjected.openWorkspaceFolder, "function");
+const sessionMenuInjected = sessionMenuEntry.options.inject();
+assert.equal(typeof sessionMenuInjected.t, "function");
+assert.equal(typeof sessionMenuInjected.openSessionFolder, "function");
 
 const settingsInjected = settings.options.inject();
 assert.equal(typeof settingsInjected.t, "function");
@@ -198,4 +263,5 @@ assert.equal(row.disposed, true);
 for (const cleanup of cleanups) {
   if (typeof cleanup === "function") cleanup();
 }
+assert.equal(navIconStyle.removed, true, "nav icon stylesheet must be removed with the plugin");
 console.log("verify-client-apply: ok");

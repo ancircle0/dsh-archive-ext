@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { TYPERT } from "./typert.host.js";
+import { TYPERT } from "../typert.host.js";
 
-const packageJson = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
-const patch = readFileSync(new URL("./cordis.patch.yml", import.meta.url), "utf8");
-const serviceSource = readFileSync(new URL("./lib/service.js", import.meta.url), "utf8");
+const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const patch = readFileSync(new URL("../cordis.patch.yml", import.meta.url), "utf8");
+const serviceSource = readFileSync(new URL("../lib/service.js", import.meta.url), "utf8");
 
 assert.equal(TYPERT.package, "@ancircle-dsh-plugins/dsh-archive-ext");
 assert.equal(TYPERT.package, packageJson.name);
 assert.equal(TYPERT.face, "host");
-assert.equal(TYPERT.invocations.length, 4);
+assert.equal(TYPERT.invocations.length, 5);
 
 const hostMethods = new Set();
 for (const invocation of TYPERT.invocations) {
@@ -30,14 +30,20 @@ for (const invocation of TYPERT.invocations) {
   assert.equal(typeof invocation.result.create, "function");
   assert.equal(invocation.result.create(), invocation.result.schema);
 }
-assert.deepEqual([...hostMethods].sort(), ["delete", "open", "restore", "state"]);
+assert.deepEqual([...hostMethods].sort(), [
+  "delete",
+  "open",
+  "openSessionStorage",
+  "restore",
+  "state",
+]);
 
 const serviceModel = TYPERT.model.services[0];
 assert.equal(serviceModel.key, "archiveExt");
 assert.equal(serviceModel.exportName, "ArchiveExtService");
 assert.deepEqual(
   serviceModel.members.map((member) => member.name).sort(),
-  ["delete", "open", "restore", "state"],
+  ["delete", "open", "openSessionStorage", "restore", "state"],
 );
 
 // Sample wire payloads parse through the declared codecs.
@@ -62,12 +68,30 @@ assert.deepEqual(
   byMethod.get("open").result.schema.parse({ ok: true, value: { path: "C:\\ws" } }),
   { ok: true, value: { path: "C:\\ws" } },
 );
+const openRequest = byMethod.get("open").parameters[0].codec.create();
+assert.deepEqual(openRequest.parse({ sessionId: "s1" }), { sessionId: "s1" });
+assert.deepEqual(
+  byMethod.get("openSessionStorage").parameters[0].codec.create().parse({ sessionId: "s1" }),
+  { sessionId: "s1" },
+);
+assert.deepEqual(
+  byMethod.get("openSessionStorage").result.schema.parse({ ok: true, value: { path: "C:\\logs" } }),
+  { ok: true, value: { path: "C:\\logs" } },
+);
+assert.ok(
+  TYPERT.model.services[0].types.some((type) => type.name === "ArchiveExtOpenSessionStorageRequest"),
+  "manifest must declare ArchiveExtOpenSessionStorageRequest",
+);
+assert.ok(
+  TYPERT.model.services[0].types.every((type) => type.name !== "WorkspaceId"),
+  "manifest must not declare the removed WorkspaceId",
+);
 assert.deepEqual(
   byMethod.get("delete").result.schema.parse({ ok: false, error: { code: "delete-failed", message: "x" } }),
   { ok: false, error: { code: "delete-failed", message: "x" } },
 );
 
-for (const method of ["restore", "delete", "state", "open"]) {
+for (const method of ["restore", "delete", "state", "open", "openSessionStorage"]) {
   assert.ok(
     serviceSource.includes(`markRemoteMethod(this, "${method}", "${method}")`),
     `service must mark ${method} as Remote`,
@@ -81,7 +105,7 @@ assert.ok(patch.includes("- id: archive-ext"));
 assert.ok(patch.includes("@ancircle-dsh-plugins/dsh-archive-ext"));
 
 // Load the client bundle far enough to inspect its Remote contribution.
-const clientSource = readFileSync(new URL("./client.js", import.meta.url), "utf8");
+const clientSource = readFileSync(new URL("../client.js", import.meta.url), "utf8");
 let captured;
 const sandbox = {
   window: {
@@ -118,10 +142,10 @@ const clientModule = captured.factory((id) => {
 const clientRemote = clientModule.CLIENT_REMOTE;
 assert.ok(clientRemote, "client must export CLIENT_REMOTE");
 assert.equal(clientRemote.package, "dsh-archive-ext");
-assert.equal(clientRemote.descriptors.length, 4);
+assert.equal(clientRemote.descriptors.length, 5);
 assert.deepEqual(
   [...clientRemote.descriptors.map((descriptor) => descriptor.method)].sort(),
-  ["delete", "open", "restore", "state"],
+  ["delete", "open", "openSessionStorage", "restore", "state"],
 );
 
 const hostById = new Map(TYPERT.invocations.map((invocation) => [invocation.id, invocation]));

@@ -3,11 +3,14 @@
  *
  * Loaded by the DSH web shell through `window.__ModuleLoader__.load`. It
  * contributes:
- *   - a session-row "..." menu item that opens the session's workspace folder
- *     in the system file manager (`sidebar.workspaces.session.menu.item`);
- *   - a sidebar-footer archive manager entry and full-screen panel
- *     (`sidebar.footer.action`) listing archived sessions grouped by workspace,
- *     with search, unarchive and confirmed permanent delete.
+ *   - two session-row "..." menu entries (`sidebar.workspaces.session.menu.item`):
+ *     "Open workspace folder" opens the session's workspace directory, and
+ *     "Open session folder" opens the session log directory;
+ *   - an "Archive manager" settings section (`settings.section`) that lists
+ *     archived sessions grouped by workspace, with search, unarchive and
+ *     confirmed permanent delete;
+ *   - an optional sidebar global-panel entry (`sidebar.panellist` + `main`)
+ *     toggled from that settings section.
  *
  * Host communication goes through the `archiveExt` Remote namespace mounted by
  * this module and served by `lib/service.js`.
@@ -133,7 +136,8 @@ window.__ModuleLoader__.load({
 
     // ---- locale dictionaries -------------------------------------------------
     const ZH = {
-      "menu.openInExplorer": "在资源管理器中打开",
+      "menu.openWorkspaceFolder": "打开工作区文件夹",
+      "menu.openSessionFolder": "打开会话文件夹",
       "footer.label": "归档管理",
       "settings.nav": "归档管理",
       "settings.pin": "在侧栏显示归档管理",
@@ -164,6 +168,9 @@ window.__ModuleLoader__.load({
       "page.ghostNotice": "{count} 个已删除会话仍驻留内存，其侧栏条目会在重启 DSH 后清除。",
       "toast.openFailed": "无法打开资源管理器：{message}",
       "errors.invalid-session": "无效的会话",
+      "errors.session-missing": "找不到该会话（可能已被删除）",
+      "errors.session-locate-unavailable": "当前 DSH 版本无法定位会话日志",
+      "errors.session-log-missing": "会话日志尚未生成或已被删除",
       "errors.not-archived": "该会话不在归档中",
       "errors.agent-running": "该会话的智能体正在运行中，请停止后再删除",
       "errors.locate-unavailable": "当前 DSH 版本无法定位会话日志，已保留归档记录",
@@ -178,7 +185,8 @@ window.__ModuleLoader__.load({
     };
 
     const EN = {
-      "menu.openInExplorer": "Open in Explorer",
+      "menu.openWorkspaceFolder": "Open workspace folder",
+      "menu.openSessionFolder": "Open session folder",
       "footer.label": "Archive manager",
       "settings.nav": "Archive manager",
       "settings.pin": "Show archive manager in sidebar",
@@ -209,6 +217,9 @@ window.__ModuleLoader__.load({
       "page.ghostNotice": "{count} deleted session(s) are still in memory; their sidebar entries clear after a DSH restart.",
       "toast.openFailed": "Could not open File Explorer: {message}",
       "errors.invalid-session": "Invalid session",
+      "errors.session-missing": "The session could not be found (it may have been deleted)",
+      "errors.session-locate-unavailable": "This DSH build cannot locate session logs",
+      "errors.session-log-missing": "The session logs have not been created yet or have been deleted",
       "errors.not-archived": "The session is not archived",
       "errors.agent-running": "The session agent is still running; stop it before deleting",
       "errors.locate-unavailable": "This DSH build cannot locate session logs; the archive entry was kept",
@@ -224,6 +235,9 @@ window.__ModuleLoader__.load({
 
     const ERROR_CODES = new Set([
       "invalid-session",
+      "session-missing",
+      "session-locate-unavailable",
+      "session-log-missing",
       "not-archived",
       "agent-running",
       "locate-unavailable",
@@ -322,6 +336,22 @@ window.__ModuleLoader__.load({
             },
           ],
           result: strictClientCodec("dsh-archive-ext#ArchiveExtOpenResult"),
+        },
+        {
+          id: "dsh-archive-ext#archiveExt/openSessionStorage",
+          service: "archiveExt",
+          namespace: "archiveExt",
+          method: "openSessionStorage",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: strictClientCodec("dsh-archive-ext#ArchiveExtOpenSessionStorageRequest"),
+            },
+          ],
+          result: strictClientCodec("dsh-archive-ext#ArchiveExtOpenSessionStorageResult"),
         },
       ],
     };
@@ -539,28 +569,43 @@ window.__ModuleLoader__.load({
       return { groups, total: archivedIds.length };
     }
 
-    // ---- session-row menu item ----------------------------------------------
-    function OpenInExplorerMenuItem(props) {
-      const { sessionId, t, openInExplorer } = props;
-      const menuState = typeof props.useMenuOpenState === "function" ? props.useMenuOpenState() : null;
+    // ---- session-row menu items (official slot) ------------------------------
+    function SessionMenuRow({ useMenuOpenState, icon, label, onSelect }) {
+      const menuState = typeof useMenuOpenState === "function" ? useMenuOpenState() : null;
       const setMenuOpen = menuState ? menuState[1] : () => {};
       const select = () => {
         setMenuOpen(false);
-        void openInExplorer(sessionId);
+        onSelect();
       };
       if (ui && ui.MenuItemButton) {
-        return h(
-          ui.MenuItemButton,
-          { icon: h(IconFolderOpen, { size: 14 }), onSelect: select },
-          t("menu.openInExplorer"),
-        );
+        return h(ui.MenuItemButton, { icon, onSelect: select }, label);
       }
       return h(
         "button",
         { type: "button", role: "menuitem", className: "ae-menu-item", onClick: select },
-        h(IconFolderOpen, { size: 14 }),
-        h("span", null, t("menu.openInExplorer")),
+        icon,
+        h("span", null, label),
       );
+    }
+
+    function OpenWorkspaceFolderMenuItem(props) {
+      const { sessionId, t, openWorkspaceFolder } = props;
+      return h(SessionMenuRow, {
+        useMenuOpenState: props.useMenuOpenState,
+        icon: h(IconFolderOpen, { size: 14 }),
+        label: t("menu.openWorkspaceFolder"),
+        onSelect: () => void openWorkspaceFolder(sessionId),
+      });
+    }
+
+    function OpenSessionFolderMenuItem(props) {
+      const { sessionId, t, openSessionFolder } = props;
+      return h(SessionMenuRow, {
+        useMenuOpenState: props.useMenuOpenState,
+        icon: h(IconArchive, { size: 14 }),
+        label: t("menu.openSessionFolder"),
+        onSelect: () => void openSessionFolder(sessionId),
+      });
     }
 
     // ---- archive manager surface --------------------------------------------
@@ -936,6 +981,217 @@ window.__ModuleLoader__.load({
       return notice ? h("div", { className: "ae-toast", role: "status" }, notice.message) : null;
     }
 
+    // ---- settings nav icon (best-effort DOM enhancement) ---------------------
+    // `settings.section` only projects `id` / `order` / `label`; the settings
+    // shell draws a gear for every section id it does not know. Until DSH grows
+    // an `icon` option, claim our own nav row after the dialog mounts and draw
+    // the same archive glyph the sidebar row uses (CSS mask + currentColor, so
+    // light/dark themes match). This enhancement is strictly best-effort: on
+    // any failure it removes the marker and stylesheet, leaving the shell's
+    // gear in place. It must never throw into DSH.
+    const NAV_ICON_SELECTOR = '[role="dialog"] nav button';
+    const NAV_ICON_MARKER = "data-dsh-archive-ext-nav-icon";
+    const NAV_ICON_SIZE = 16;
+
+    /** Whether a nav row's visible text is this plugin's own section label. */
+    function isOwnNavRow(rowText, wantedLabel) {
+      const wanted = String(wantedLabel == null ? "" : wantedLabel).trim();
+      if (wanted.length === 0) return false;
+      return String(rowText == null ? "" : rowText).trim() === wanted;
+    }
+
+    /** The archive glyph (same geometry as `IconArchive`) as a mask SVG. */
+    function navIconMaskSvg() {
+      return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" fill="none" stroke="#000" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="1.5" y="2" width="11" height="3.5" rx="0.8"/>' +
+        '<path d="M2.5 5.5v5a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-5"/>' +
+        '<path d="M5.5 8h3"/>' +
+        "</svg>"
+      );
+    }
+
+    function navIconMaskUrl(svg) {
+      return "data:image/svg+xml," + encodeURIComponent(svg === undefined ? navIconMaskSvg() : svg);
+    }
+
+    function navIconCss(maskUrl) {
+      return [
+        "[" + NAV_ICON_MARKER + "] > svg { display: none; }",
+        "[" + NAV_ICON_MARKER + "]::before {",
+        "  content: '';",
+        "  flex: none;",
+        "  width: " + NAV_ICON_SIZE + "px;",
+        "  height: " + NAV_ICON_SIZE + "px;",
+        "  background-color: currentColor;",
+        '  -webkit-mask-image: url("' + maskUrl + '");',
+        '  mask-image: url("' + maskUrl + '");',
+        "  -webkit-mask-repeat: no-repeat;",
+        "  mask-repeat: no-repeat;",
+        "  -webkit-mask-position: center;",
+        "  mask-position: center;",
+        "  -webkit-mask-size: " + NAV_ICON_SIZE + "px " + NAV_ICON_SIZE + "px;",
+        "  mask-size: " + NAV_ICON_SIZE + "px " + NAV_ICON_SIZE + "px;",
+        "}",
+      ].join("\n");
+    }
+
+    function navIconWarn(message, error) {
+      try {
+        if (typeof console !== "undefined" && console && typeof console.warn === "function") {
+          console.warn(message, error);
+        }
+      } catch {
+        /* logging must never break the fallback */
+      }
+    }
+
+    /**
+     * Whether this engine can paint the glyph as a CSS mask. If it cannot, the
+     * `::before` box would show as a solid square, so the plugin keeps the
+     * shell's gear instead of degrading visually.
+     */
+    function supportsMaskImage() {
+      try {
+        // Note: this bundle also has a local `CSS` stylesheet constant, so read
+        // the browser API from globalThis rather than the bare identifier.
+        const css = typeof globalThis === "undefined" ? undefined : globalThis.CSS;
+        if (!css || typeof css.supports !== "function") return true;
+        return (
+          css.supports("mask-image", 'url("x")') ||
+          css.supports("-webkit-mask-image", 'url("x")')
+        );
+      } catch {
+        return false;
+      }
+    }
+
+    /**
+     * Install the settings-nav glyph, or permanently fall back to the shell's
+     * gear when anything goes wrong. Never throws.
+     */
+    function installSettingsNavIcon(ctx, resolveLabel) {
+      try {
+        if (typeof document === "undefined" || document === null) return;
+        if (typeof document.querySelectorAll !== "function") return;
+        ctx.effect(() => {
+          let styleTag = null;
+          let observer = null;
+          let disposed = false;
+          let scheduled = false;
+          const markedRows = new Set();
+          /** Undo every DOM change; safe to call repeatedly and from cleanup. */
+          const fallback = (reason) => {
+            if (disposed) return;
+            disposed = true;
+            try {
+              if (observer) observer.disconnect();
+            } catch {
+              /* observer already gone */
+            }
+            observer = null;
+            for (const row of Array.from(markedRows)) {
+              try {
+                row.removeAttribute(NAV_ICON_MARKER);
+              } catch {
+                /* row may be gone */
+              }
+            }
+            markedRows.clear();
+            try {
+              if (styleTag && typeof styleTag.remove === "function") styleTag.remove();
+            } catch {
+              /* style may be detached already */
+            }
+            styleTag = null;
+            if (reason !== undefined) {
+              navIconWarn(
+                "[archive-ext] settings nav icon disabled; using the default settings icon",
+                reason,
+              );
+            }
+          };
+          const sync = () => {
+            if (disposed) return;
+            try {
+              const wanted = resolveLabel();
+              const rows = document.querySelectorAll(NAV_ICON_SELECTOR);
+              const seen = new Set();
+              for (const row of Array.from(rows)) {
+                seen.add(row);
+                if (isOwnNavRow(row && row.textContent, wanted)) {
+                  try {
+                    row.setAttribute(NAV_ICON_MARKER, "");
+                    markedRows.add(row);
+                  } catch {
+                    /* row may be gone */
+                  }
+                } else {
+                  try {
+                    row.removeAttribute(NAV_ICON_MARKER);
+                  } catch {
+                    /* row may be gone */
+                  }
+                  markedRows.delete(row);
+                }
+              }
+              for (const row of Array.from(markedRows)) {
+                if (seen.has(row)) continue;
+                try {
+                  row.removeAttribute(NAV_ICON_MARKER);
+                } catch {
+                  /* row may be gone */
+                }
+                markedRows.delete(row);
+              }
+            } catch (error) {
+              fallback(error);
+            }
+          };
+          const schedule = () => {
+            if (scheduled || disposed) return;
+            scheduled = true;
+            const run = () => {
+              scheduled = false;
+              sync();
+            };
+            try {
+              if (typeof queueMicrotask === "function") queueMicrotask(run);
+              else run();
+            } catch {
+              run();
+            }
+          };
+          try {
+            if (!document.head || !document.body) return fallback;
+            if (!supportsMaskImage()) return fallback;
+            styleTag = document.createElement("style");
+            styleTag.setAttribute("data-plugin", "archive-ext");
+            styleTag.setAttribute("data-plugin-css", "archive-ext/settings-nav-icon");
+            styleTag.textContent = navIconCss(navIconMaskUrl());
+            document.head.appendChild(styleTag);
+            if (typeof MutationObserver === "function") {
+              observer = new MutationObserver(schedule);
+              observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                characterData: true,
+              });
+            }
+            sync();
+          } catch (error) {
+            fallback(error);
+          }
+          return fallback;
+        }, "archive-ext: settings nav icon");
+      } catch (error) {
+        navIconWarn(
+          "[archive-ext] settings nav icon unavailable; using the default settings icon",
+          error,
+        );
+      }
+    }
+
     // ---- plugin apply --------------------------------------------------------
     async function apply(ctx) {
       await ctx.remote.$mount(CLIENT_REMOTE);
@@ -953,16 +1209,48 @@ window.__ModuleLoader__.load({
       } catch {
         locale = null;
       }
-      if (locale && typeof locale.register === "function") {
+      // Locale activation order is not guaranteed: this plugin declares no
+      // locale dependency, so the service (and the dictionaries of other
+      // packages) may appear some time after our apply runs. Resolve it lazily
+      // instead of capturing one possibly-undefined value.
+      const getLocaleService = () => {
         try {
-          ctx.effect(() => locale.register(NS, { zh: ZH, en: EN }), "archive-ext: dictionaries");
+          if (locale) return locale;
+          const current = ctx.get("locale");
+          if (current) locale = current;
+          return current || null;
+        } catch {
+          return null;
+        }
+      };
+      let dictionariesRegistered = false;
+      const ensureDictionaries = () => {
+        if (dictionariesRegistered) return;
+        const service = getLocaleService();
+        if (!service || typeof service.register !== "function") return;
+        try {
+          ctx.effect(() => service.register(NS, { zh: ZH, en: EN }), "archive-ext: dictionaries");
+          dictionariesRegistered = true;
         } catch {
           /* fall back to the built-in dictionaries below */
         }
-      }
-      const bound = locale && typeof locale.bind === "function" ? locale.bind(NS) : null;
+      };
+      let boundTranslate = null;
+      const getBoundTranslate = () => {
+        if (boundTranslate) return boundTranslate;
+        const service = getLocaleService();
+        if (!service || typeof service.bind !== "function") return null;
+        try {
+          const candidate = service.bind(NS);
+          if (typeof candidate === "function") boundTranslate = candidate;
+        } catch {
+          boundTranslate = null;
+        }
+        return boundTranslate;
+      };
       const t = (key, vars) => {
         let value;
+        const bound = getBoundTranslate();
         if (bound) {
           try {
             value = bound(key, vars);
@@ -973,6 +1261,26 @@ window.__ModuleLoader__.load({
         if (value === undefined || value === key) value = ZH[key] === undefined ? key : ZH[key];
         return formatMessage(value, vars);
       };
+      let localeRetryTimer;
+      let localeRetryAttempts = 0;
+      const retryLocale = () => {
+        localeRetryTimer = undefined;
+        ensureDictionaries();
+        if (dictionariesRegistered && getBoundTranslate()) return;
+        if (localeRetryAttempts >= 8) return;
+        localeRetryAttempts += 1;
+        try {
+          localeRetryTimer = setTimeout(retryLocale, 250);
+        } catch {
+          /* timers unavailable: the built-in dictionary remains */
+        }
+      };
+      ensureDictionaries();
+      retryLocale();
+      ctx.effect(() => () => {
+        if (localeRetryTimer !== undefined) clearTimeout(localeRetryTimer);
+        localeRetryTimer = undefined;
+      }, "archive-ext: locale retry timer");
 
       const ghostStore = createStore([]);
       const noticeStore = createStore(null);
@@ -1022,9 +1330,9 @@ window.__ModuleLoader__.load({
         }
       };
 
-      const openInExplorer = async (sessionId) => {
+      const runOpen = async (invoke, sessionId) => {
         try {
-          const result = await remote.open({ sessionId });
+          const result = await invoke({ sessionId });
           if (!result || !result.ok) {
             showNotice(t("toast.openFailed", { message: errorMessage(result && result.error, t) }));
           }
@@ -1039,6 +1347,20 @@ window.__ModuleLoader__.load({
           );
         }
       };
+      const callRemoteOpen = (method, sessionId) => {
+        const invoke = remote && typeof remote[method] === "function" ? remote[method].bind(remote) : null;
+        if (!invoke) {
+          showNotice(
+            t("toast.openFailed", {
+              message: errorMessage({ code: "unknown", message: `${method} is unavailable` }, t),
+            }),
+          );
+          return;
+        }
+        void runOpen(invoke, sessionId);
+      };
+      const openWorkspaceFolder = (sessionId) => callRemoteOpen("open", sessionId);
+      const openSessionFolder = (sessionId) => callRemoteOpen("openSessionStorage", sessionId);
 
       const getLayout = () => {
         try {
@@ -1135,17 +1457,26 @@ window.__ModuleLoader__.load({
         syncSidebar();
       };
 
-      ctx.slots.inject("sidebar.workspaces.session.menu.item", () =>
-        ctx.slots.register(
+      ctx.slots.inject("sidebar.workspaces.session.menu.item", function* () {
+        yield ctx.slots.register(
           {
             name: "sidebar.workspaces.session.menu.item",
-            id: "archive-ext.open-in-explorer",
+            id: "archive-ext.open-workspace-folder",
             order: 430,
-            inject: () => ({ t, openInExplorer }),
+            inject: () => ({ t, openWorkspaceFolder }),
           },
-          OpenInExplorerMenuItem,
-        ),
-      );
+          OpenWorkspaceFolderMenuItem,
+        );
+        yield ctx.slots.register(
+          {
+            name: "sidebar.workspaces.session.menu.item",
+            id: "archive-ext.open-session-folder",
+            order: 440,
+            inject: () => ({ t, openSessionFolder }),
+          },
+          OpenSessionFolderMenuItem,
+        );
+      });
 
       ctx.slots.inject("sidebar.panellist", () => {
         sidebarSlotReady = true;
@@ -1171,6 +1502,15 @@ window.__ModuleLoader__.load({
         ),
       );
 
+      try {
+        installSettingsNavIcon(ctx, () => t("settings.nav"));
+      } catch (error) {
+        navIconWarn(
+          "[archive-ext] settings nav icon setup failed; using the default settings icon",
+          error,
+        );
+      }
+
       ctx.slots.inject("sidebar.footer.action", () =>
         ctx.slots.register(
           {
@@ -1187,6 +1527,18 @@ window.__ModuleLoader__.load({
     exports.apply = apply;
     exports.inject = ["slots", "remote"];
     exports.CLIENT_REMOTE = CLIENT_REMOTE;
+    // Exposed for test/nav-icon.test.mjs: the enhancement is DOM-only and its
+    // failure paths must stay reachable from a test harness.
+    exports.CLIENT_NAV_ICON = {
+      installSettingsNavIcon,
+      isOwnNavRow,
+      navIconCss,
+      navIconMaskSvg,
+      navIconMaskUrl,
+      NAV_ICON_MARKER,
+      NAV_ICON_SELECTOR,
+      NAV_ICON_SIZE,
+    };
     return module.exports;
   },
 });

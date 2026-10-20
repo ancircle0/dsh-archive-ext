@@ -10,9 +10,12 @@ import {
   deleteArchivedSession,
   ghostSessionIds,
   openInExplorer,
+  openSessionStorageInExplorer,
   pickWorkspacePath,
-  restoreArchivedSession,
   resolveSessionDirectory,
+  resolveSessionStorageDirectory,
+  restoreArchivedSession,
+  validateDirectory,
 } from "../lib/core.js";
 
 async function makeTemp() {
@@ -384,6 +387,133 @@ test("openInExplorer launches the platform command and classifies failures", asy
     });
     assert.equal(missingPath.ok, false);
     assert.equal(missingPath.error.code, "path-missing");
+  } finally {
+    await dropTemp(directory);
+  }
+});
+
+test("validateDirectory requires an existing absolute directory", async () => {
+  const directory = await makeTemp();
+  try {
+    const valid = validateDirectory(directory);
+    assert.equal(valid.ok, true);
+    assert.equal(valid.path, directory);
+    assert.equal(validateDirectory("").error.code, "path-missing");
+    assert.equal(validateDirectory("relative/path").error.code, "path-missing");
+    assert.equal(validateDirectory(join(directory, "missing")).error.code, "path-missing");
+    const file = join(directory, "file.txt");
+    await writeFile(file, "x");
+    assert.equal(validateDirectory(file).error.code, "path-not-directory");
+  } finally {
+    await dropTemp(directory);
+  }
+});
+
+test("resolveSessionStorageDirectory resolves a persisted session log directory", async () => {
+  const directory = await makeTemp();
+  try {
+    const logFile = join(directory, "session.v4.jsonl.zstd");
+    await writeFile(logFile, "log");
+    const { services } = makeServices({
+      headers: [{ id: "s1", cwd: directory }],
+      locate: () => ({ path: logFile }),
+    });
+    const result = await resolveSessionStorageDirectory(services, "s1");
+    assert.equal(result.ok, true);
+    assert.equal(result.path, directory);
+
+    // 0.1.x locate may return the session directory itself.
+    const legacy = makeServices({
+      headers: [{ id: "s1" }],
+      locate: () => ({ path: directory }),
+    });
+    const legacyResult = await resolveSessionStorageDirectory(legacy.services, "s1");
+    assert.equal(legacyResult.ok, true);
+    assert.equal(legacyResult.path, directory);
+  } finally {
+    await dropTemp(directory);
+  }
+});
+
+test("resolveSessionStorageDirectory classifies missing sessions, locators and logs", async () => {
+  const directory = await makeTemp();
+  try {
+    const invalid = await resolveSessionStorageDirectory(makeServices().services, "");
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.error.code, "invalid-session");
+
+    const unknown = await resolveSessionStorageDirectory(makeServices().services, "nope");
+    assert.equal(unknown.ok, false);
+    assert.equal(unknown.error.code, "session-missing");
+
+    const noLocateServices = makeServices({ headers: [{ id: "s1" }] }).services;
+    delete noLocateServices.sessionPersistence.locate;
+    const noLocate = await resolveSessionStorageDirectory(noLocateServices, "s1");
+    assert.equal(noLocate.ok, false);
+    assert.equal(noLocate.error.code, "session-locate-unavailable");
+
+    const throwing = makeServices({
+      headers: [{ id: "s1" }],
+      locate: () => {
+        throw new Error("boom");
+      },
+    });
+    const thrown = await resolveSessionStorageDirectory(throwing.services, "s1");
+    assert.equal(thrown.ok, false);
+    assert.equal(thrown.error.code, "session-locate-unavailable");
+
+    const missingLog = makeServices({
+      headers: [{ id: "s1" }],
+      locate: () => ({ path: join(directory, "gone", "session.v4.jsonl.zstd") }),
+    });
+    const missing = await resolveSessionStorageDirectory(missingLog.services, "s1");
+    assert.equal(missing.ok, false);
+    assert.equal(missing.error.code, "session-log-missing");
+  } finally {
+    await dropTemp(directory);
+  }
+});
+
+test("openSessionStorageInExplorer opens the storage directory and classifies failures", async () => {
+  const directory = await makeTemp();
+  try {
+    const logFile = join(directory, "session.v4.jsonl.zstd");
+    await writeFile(logFile, "log");
+    const { services } = makeServices({
+      headers: [{ id: "s1" }],
+      locate: () => ({ path: logFile }),
+    });
+    const calls = [];
+    const success = await openSessionStorageInExplorer({
+      sessionId: "s1",
+      services,
+      platform: "win32",
+      execFile: (file, args, _options, callback) => {
+        calls.push({ file, args });
+        callback(null);
+      },
+    });
+    assert.equal(success.ok, true);
+    assert.equal(success.value.path, directory);
+    assert.deepEqual(calls, [{ file: "explorer.exe", args: [directory] }]);
+
+    const missing = await openSessionStorageInExplorer({
+      sessionId: "nope",
+      services,
+      platform: "win32",
+      execFile: (_file, _args, _options, callback) => callback(null),
+    });
+    assert.equal(missing.ok, false);
+    assert.equal(missing.error.code, "session-missing");
+
+    const launchFailure = await openSessionStorageInExplorer({
+      sessionId: "s1",
+      services,
+      platform: "linux",
+      execFile: (_file, _args, _options, callback) => callback({ code: "ENOENT" }),
+    });
+    assert.equal(launchFailure.ok, false);
+    assert.equal(launchFailure.error.code, "launch-failed");
   } finally {
     await dropTemp(directory);
   }

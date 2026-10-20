@@ -1,8 +1,8 @@
 {
   "name": "@ancircle-dsh-plugins/dsh-archive-ext",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "private": true,
-  "description": "DeepSeek Harness extension: open a session's workspace folder in File Explorer from the session menu, and manage archived sessions in a dedicated page.",
+  "description": "DeepSeek Harness extension: open a session's workspace folder or session log folder in File Explorer, and manage archived sessions in a settings page.",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -45,7 +45,7 @@
   },
   "scripts": {
     "check": "node --check index.js && node --check client.js && node --check typert.host.js && node --check lib/core.js && node --check lib/service.js",
-    "test": "node test/core.test.mjs",
-    "verify": "node verify-typert-manifest.mjs && node verify-client-apply.mjs"
+    "test": "node test/core.test.mjs && node test/nav-icon.test.mjs",
+    "verify": "node test/verify-typert-manifest.mjs && node test/verify-client-apply.mjs"
   }
 }
