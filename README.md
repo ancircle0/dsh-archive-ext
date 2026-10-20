@@ -9,6 +9,10 @@
 
 插件只向 DSH 的会话菜单添加入口，不替换或改写内置菜单项，也不依赖其他第三方插件。
 
+## 预览 
+![打开工作区文件夹](screenshot/preview-open-in-explorer.png)
+![打开会话文件夹](screenshot/preview-archve-manager.png)
+
 ## 功能特性
 
 ### 会话菜单快捷入口
