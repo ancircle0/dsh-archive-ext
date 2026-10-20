@@ -173,8 +173,8 @@ assert.ok(navIconStyle, "apply must install the settings nav icon stylesheet");
 assert.match(navIconStyle.textContent, /mask-image/);
 assert.ok(sandbox.document.head.children.includes(navIconStyle));
 
-// The session-row entries are plain official-slot registrations; there is no
-// workspace-menu DOM enhancement any more.
+// The old workspace-row menu DOM enhancement was removed; only the official
+// session-menu slot entries remain.
 assert.equal(module.CLIENT_WORKSPACE_MENU, undefined);
 
 assert.deepEqual(injections.map((entry) => entry.key).sort(), [
@@ -194,7 +194,7 @@ for (const injection of injections) {
 
 // Settings section, session menu entries and the hidden toast are always registered.
 const settings = registrations.find((entry) => entry.options.name === "settings.section");
-const workspaceMenuEntry = registrations.find(
+const workspaceFolderEntry = registrations.find(
   (entry) => entry.options.id === "archive-ext.open-workspace-folder",
 );
 const sessionMenuEntry = registrations.find(
@@ -205,10 +205,10 @@ assert.ok(settings, "settings.section registration");
 assert.equal(settings.options.id, "archive-ext");
 assert.equal(settings.options.order, 50);
 assert.equal(typeof settings.component, "function");
-assert.ok(workspaceMenuEntry, "open-workspace-folder registration");
-assert.equal(workspaceMenuEntry.options.name, "sidebar.workspaces.session.menu.item");
-assert.equal(workspaceMenuEntry.options.order, 430);
-assert.equal(typeof workspaceMenuEntry.component, "function");
+assert.ok(workspaceFolderEntry, "open-workspace-folder registration");
+assert.equal(workspaceFolderEntry.options.name, "sidebar.workspaces.session.menu.item");
+assert.equal(workspaceFolderEntry.options.order, 430);
+assert.equal(typeof workspaceFolderEntry.component, "function");
 assert.ok(sessionMenuEntry, "open-session-folder registration");
 assert.equal(sessionMenuEntry.options.name, "sidebar.workspaces.session.menu.item");
 assert.equal(sessionMenuEntry.options.order, 440);
@@ -217,9 +217,9 @@ assert.ok(toast, "toast registration");
 assert.equal(toast.options.name, "sidebar.footer.action");
 assert.equal(registrations.some((entry) => entry.options.id === "archive-ext.page"), false);
 
-const workspaceMenuInjected = workspaceMenuEntry.options.inject();
-assert.equal(typeof workspaceMenuInjected.t, "function");
-assert.equal(typeof workspaceMenuInjected.openWorkspaceFolder, "function");
+const workspaceFolderInjected = workspaceFolderEntry.options.inject();
+assert.equal(typeof workspaceFolderInjected.t, "function");
+assert.equal(typeof workspaceFolderInjected.openWorkspaceFolder, "function");
 const sessionMenuInjected = sessionMenuEntry.options.inject();
 assert.equal(typeof sessionMenuInjected.t, "function");
 assert.equal(typeof sessionMenuInjected.openSessionFolder, "function");

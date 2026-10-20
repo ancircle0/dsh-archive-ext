@@ -50,11 +50,8 @@ window.__ModuleLoader__.load({
     const SIDEBAR_STORAGE_KEY = "dsh-archive-ext.sidebar";
 
     const CSS = `
-.ae-overlay{position:fixed;inset:0;z-index:1000;background:var(--dsw-alias-bg-mask-1,rgba(0,0,0,.4));backdrop-filter:var(--dsw-mask-blur,blur(2px));display:flex;align-items:center;justify-content:center;padding:24px;}
-.ae-panel{position:relative;display:flex;flex-direction:column;width:800px;max-width:calc(100vw - 48px);height:min(800px,100vh - 48px);overflow:hidden;border:1px solid var(--dsw-alias-border-inverted,rgba(128,128,128,.3));border-radius:24px;background:var(--dsw-alias-bg-layer-2,#fff);color:var(--dsw-alias-label-primary,inherit);box-shadow:var(--dsw-shadow-lv3,0 12px 40px rgba(0,0,0,.25));}
 .ae-header{display:flex;align-items:center;gap:10px;padding:18px 14px 10px 24px;}
 .ae-panel-title{font-weight:500;font-size:16px;line-height:24px;flex:1;color:var(--dsw-alias-label-primary,inherit);}
-.ae-panel-count{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary,inherit);flex:none;}
 .ae-close{flex:none;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;border-radius:8px;background:transparent;cursor:pointer;color:var(--dsw-alias-label-secondary,inherit);padding:0;font-size:14px;line-height:1;}
 .ae-close:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12));color:var(--dsw-alias-label-primary,inherit);}
 .ae-close[disabled]{opacity:.5;cursor:default;}
@@ -62,7 +59,6 @@ window.__ModuleLoader__.load({
 .ae-search input{box-sizing:border-box;width:100%;height:30px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.2));border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary,inherit);font-size:13px;line-height:18px;outline:none;font-family:inherit;}
 .ae-search input::placeholder{color:var(--dsw-alias-label-tertiary,inherit);}
 .ae-search input:focus{border-color:var(--dsw-alias-brand-primary,#4a7dff);}
-.ae-body{flex:1;overflow-y:auto;padding:4px 8px 16px;overscroll-behavior:contain;}
 .ae-group{margin-top:2px;}
 .ae-group+.ae-group{margin-top:4px;}
 .ae-group-head{box-sizing:border-box;display:flex;align-items:center;gap:6px;height:34px;width:100%;padding:0 8px;border-radius:8px;border:none;background:transparent;color:inherit;font-family:inherit;font-size:inherit;text-align:left;cursor:pointer;}
@@ -100,14 +96,6 @@ window.__ModuleLoader__.load({
 .ae-confirm-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12));}
 .ae-confirm-danger{border-color:transparent;background:var(--dsw-alias-state-error-primary,#e5484d);color:var(--dsw-alias-bg-base,#fff);}
 .ae-confirm-btn[disabled]{opacity:.5;cursor:default;}
-.ae-foot{flex:none;width:100%;display:flex;align-items:center;margin:8px 0 0;}
-.ae-foot-rail{width:36px;height:36px;margin:0;}
-.ae-foot-btn{width:100%;height:49px;border-radius:12px;padding:0 8px 0 6px;display:inline-flex;align-items:center;gap:8px;background:transparent;border:none;color:var(--dsw-alias-label-primary,inherit);font-family:inherit;font-size:14px;cursor:pointer;overflow:hidden;}
-.ae-foot-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.1));}
-.ae-foot-btn.ae-active{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));}
-.ae-foot-rail .ae-foot-btn{width:36px;height:36px;padding:0;justify-content:center;border-radius:10px;}
-.ae-foot-label{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden;}
-.ae-foot-count{color:var(--dsw-alias-label-tertiary,inherit);font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:12px;line-height:16px;}
 .ae-surface{display:flex;flex-direction:column;min-height:0;color:var(--dsw-alias-label-primary,inherit);}
 .ae-surface-head{display:flex;align-items:center;gap:10px;padding:0 0 12px;}
 .ae-surface-title{font-weight:500;font-size:16px;line-height:24px;flex:1;color:var(--dsw-alias-label-primary,inherit);}
@@ -138,7 +126,6 @@ window.__ModuleLoader__.load({
     const ZH = {
       "menu.openWorkspaceFolder": "打开工作区文件夹",
       "menu.openSessionFolder": "打开会话文件夹",
-      "footer.label": "归档管理",
       "settings.nav": "归档管理",
       "settings.pin": "在侧栏显示归档管理",
       "settings.pinDesc": "开启后，在侧栏全局入口显示「归档管理」，点击即可打开。",
@@ -187,7 +174,6 @@ window.__ModuleLoader__.load({
     const EN = {
       "menu.openWorkspaceFolder": "Open workspace folder",
       "menu.openSessionFolder": "Open session folder",
-      "footer.label": "Archive manager",
       "settings.nav": "Archive manager",
       "settings.pin": "Show archive manager in sidebar",
       "settings.pinDesc": "Adds an “Archive manager” entry to the sidebar’s global panel list; click it to open the page.",
