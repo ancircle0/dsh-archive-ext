@@ -33,6 +33,7 @@
 | v1.23 | 2026-10-20 | 按当前代码同步 PLAN：新增「方案演进与未采用方案」，明确工作区行没有官方菜单插槽、DOM 注入方案（v1.15–v1.17）为何放弃，以及当前用官方会话菜单承载「打开工作区文件夹」的取舍；修正文档与代码的细节差异（check 命令、constructor、错误码、removeArchivedSession、测试覆盖、安装路径等） | 计划与实现原理一致；后续维护者能理解为什么入口在会话菜单而不是工作区菜单 |
 | v1.24 | 2026-10-20 | 包名改为 `@ancircle0/dsh-archive-ext`，匹配已创建的 npm org；同步 package / patch / Typert / client loader / 测试 / README / LICENSE | 单包标识统一；旧名未发布，无迁移负担 |
 | v1.25 | 2026-10-20 | 准备 npm 公开发布：移除 `private`，增加 `publishConfig.access=public` 与 repository/homepage/bugs/author/keywords；README 安装章节改为 npm 优先，保留本地目录安装 | 包可 `npm publish`；用户可直接按包名安装 |
+| v1.26 | 2026-10-28 | 消除「两个归档管理页面」：侧栏固定入口打开的主界面页面此前是去掉「在侧栏显示归档管理」开关的独立变体。现两个入口渲染同一个页面组件与同一份内容（都带开关），只保留一个页面；`ArchiveManagerSurface` 不再按 `surface` 决定是否渲染开关行，只保留外层容器差异。版本号升到 `0.1.4` | 侧栏入口与设置页看到的归档管理完全一致；无新增 slot/DOM 依赖；`surface` 只表示外层容器样式 |
 
 ## 目标
 
@@ -40,7 +41,7 @@
 
 1. 在**会话行 “…” 菜单**（官方 `sidebar.workspaces.session.menu.item`）增加两个入口：①「打开工作区文件夹」打开当前会话所属工作区目录；②「打开会话文件夹」打开该会话日志所在目录。菜单入口不使用 DOM 注入，也不依赖工作区行菜单结构；设置页图标增强是独立的可失败增强。
 2. 在**设置页**增加「归档管理」section，按工作区分组列出已归档会话，支持搜索、取消归档、永久删除；永久删除有二次确认。
-3. 设置页内提供「在侧栏显示归档管理」开关；开启后通过官方侧栏全局面板 API 固定一个可点击入口，位置参考第三方插件市场的侧栏入口。
+3. 设置页内提供「在侧栏显示归档管理」开关；开启后通过官方侧栏全局面板 API 固定一个可点击入口，位置参考第三方插件市场的侧栏入口。该入口打开的就是**同一个**归档管理页面（含「在侧栏显示归档管理」开关），全插件只有一个归档管理页面。
 
 本插件独立创建，不修改、不依赖、不冒充其他第三方插件。
 
@@ -55,7 +56,7 @@
 
 ## 已确认的决定
 
-- 新建独立插件，包名 `@ancircle0/dsh-archive-ext`，版本 `0.1.3`，公开 npm 包（`publishConfig.access = "public"`）。
+- 新建独立插件，包名 `@ancircle0/dsh-archive-ext`，版本 `0.1.4`，公开 npm 包（`publishConfig.access = "public"`）。
 - **放弃工作区行菜单的 DOM 注入**（v1.15–v1.17 的 `installWorkspaceMenuAction` / 归属识别 / 回退状态全部移除）：DSH 没有工作区菜单 slot，注入随宿主 DOM 变化易失效。菜单入口全部改用官方 `sidebar.workspaces.session.menu.item`。
 - 会话 “…” 菜单新增两个条目（均为官方 slot 条目，使用 `MenuItemButton`）：
   - `archive-ext.open-workspace-folder`，order 430，label「打开工作区文件夹」，图标文件夹；调用 `open({ sessionId })`，由 Host 解析该会话所属工作区目录（工作区路径优先，回退 live/persisted `cwd`）。
@@ -64,7 +65,8 @@
 - 新增 Host Remote 方法 `openSessionStorage({ sessionId })`：`findHeader` → `sessionPersistence.locate(header)` → `deletionTarget(location.path)` 归一为会话目录 → 目录校验 → Explorer；错误码 `invalid-session`（空/非法 id）、`session-missing`（找不到 header）、`session-locate-unavailable`（构建无法定位日志）、`session-log-missing`（日志路径为空、目录不存在或不是目录）、`launch-failed`。日志不存在时只提示，不回退打开工作区目录。
 - 两个会话菜单条目始终显示，不依赖工作区菜单增强状态；保留设置页 section、侧栏固定入口与设置图标增强。
 - 归档管理入口从 footer 迁移到**设置页 section**：注册 `settings.section`（id `archive-ext`，order 50，label「归档管理」）。DSH 没有设置 section 图标 API；设置页导航图标通过**可失败、可回退的导航行增强**与侧栏保持一致：只标记本插件自己的那一行，用 CSS mask 绘制同一个归档图标，异常时清理并回退到 DSH 默认齿轮。
-- 可选侧栏固定入口使用官方 `sidebar.panellist`（列表行）+ `main`（keyed 面板内容）+ `layout.selectPanel(id)`；开关状态保存在浏览器 `localStorage`，开启后侧栏出现归档管理行，点击在主界面渲染归档管理面板，关闭时若当前面板是归档管理则 `selectPanel(null)`。
+- 可选侧栏固定入口使用官方 `sidebar.panellist`（列表行）+ `main`（keyed 面板内容）+ `layout.selectPanel(id)`；开关状态保存在浏览器 `localStorage`，开启后侧栏出现归档管理行，点击在主界面渲染**与设置页完全相同的归档管理页面**（同一个 `ArchiveManagerSurface`，同样包含「在侧栏显示归档管理」开关），关闭时若当前面板是归档管理则 `selectPanel(null)`。
+- **只有一个归档管理页面**（v1.26）：两个入口（设置页 section、侧栏固定入口）挂载同一个页面组件与同一份内容，不再存在“侧栏面板版没有开关”的第二个页面变体。DSH 没有“打开设置页并定位到某个 section”的插件 API（设置面板的开关/选中态只存在 ui-settings-general 内部 store；`settings.section` 只拿到 `close`；`settings.launcher` 是单槽且已被账号菜单占用），因此不采用“侧栏入口去驱动设置面板”的做法，也不为此新增 DOM 注入。
 - 设置页开关优先使用 DSH ui-primitives 的 `Switch`（宿主插件列表同款，props：`checked/onChange/label/disabled/title`），完全继承宿主的主题色、形状与状态色；仅在宿主未导出 `Switch` 时回退到本插件自带开关（可见 token + 状态文案）。不再自绘宿主开关的配色。
 - footer 只保留一个不可见的 toast 注册（用于“打开资源管理器失败”等全局提示），不再提供归档管理入口。
 - 目标运行时 DSH 0.1.7+（当前安装为 0.2.1-rc.2），优先验证 Windows；打开目录的命令同时覆盖 macOS/Linux。
@@ -170,7 +172,7 @@ dsh-archive-ext/
 
 ### package.json
 
-- `name: "@ancircle0/dsh-archive-ext"`，`version: "0.1.3"`，`type: "module"`；无 `private`，`publishConfig.access = "public"`。
+- `name: "@ancircle0/dsh-archive-ext"`，`version: "0.1.4"`，`type: "module"`；无 `private`，`publishConfig.access = "public"`。
 - 发布元数据：`author`、`repository`、`homepage`、`bugs`、`keywords` 指向 `github.com/ancircle0/dsh-archive-ext`。
 - `main: "index.js"`。
 - `exports`：`.`、`./client`、`./typert`、`./cordis.patch.yml`、`./package.json`、`./locale/*.json`、`./icon`。
@@ -188,7 +190,7 @@ dsh-archive-ext/
 
 ### 发布
 
-- 版本号与 Git tag 对齐（当前 `0.1.3` / `v0.1.3`）；`npm publish --access public`，`publishConfig` 已声明 public。
+- 版本号与 Git tag 对齐（当前 `0.1.4` / `v0.1.4`）；`npm publish --access public`，`publishConfig` 已声明 public。
 - README 安装命令以 npm 包名为主，保留本地目录安装供开发。
 - DSH 插件管理没有自动升级操作；升级需要卸载旧版本后再安装新版本。
 
@@ -285,7 +287,7 @@ dsh-archive-ext/
 ### 设置页 section
 
 - `ctx.slots.inject('settings.section', ...)` + `ctx.slots.register({ name: 'settings.section', id: 'archive-ext', order: 50, label: () => t('settings.nav'), locale: NS, inject })`。
-- 内容复用 `ArchiveManagerSurface`（`surface: 'settings'`）：顶部「在侧栏显示归档管理」开关 + 计数 + 搜索 + 分组列表 + 二次删除确认。
+- 内容就是唯一的归档管理页面：`ArchiveManagerSurface`（`surface: 'settings'`）——「在侧栏显示归档管理」开关 + 计数 + 搜索 + 分组列表 + 二次删除确认。
 - 开关状态从 `localStorage` 读取，切换时即时注册/注销侧栏入口；`sidebar.panellist` 不存在时开关禁用并提示当前 DSH 不支持。
 - 设置 section 的导航图标按「可失败增强」处理：DSH `settings.section` 只投影 `id`/`order`/`label`，没有图标字段。插件在设置 dialog 挂载后，仅按本地化 label 标记自己的导航按钮，注入 `currentColor` + CSS mask 的归档图标（与侧栏 `IconArchive` 同一几何）；MutationObserver 负责 locale 切换后重新匹配。
   - 增强必须是 best-effort：`typeof document` / `body` / `head` / `querySelectorAll` / `MutationObserver` / `queueMicrotask` 逐项检测；`CSS.supports` 判断 mask-image 可用（不可用会退化成实心方块，因此直接回退齿轮）；`ctx.effect` 清理时移除标记与 `<style>`。
@@ -296,10 +298,12 @@ dsh-archive-ext/
 ### 可选侧栏固定入口
 
 - 开启时注册：
-  - `main` keyed 插槽，key/id 为 `archive-ext`，渲染 `ArchiveManagerSurface`（`surface: 'panel'`）。
+  - `main` keyed 插槽，key/id 为 `archive-ext`，渲染**同一个**归档管理页面（`ArchiveManagerSurface`，`surface: 'panel'` 仅表示外层容器样式，含开关行）。
   - `sidebar.panellist` 列表行，id `archive-ext`，order 2（插件市场 order 1 之后），label「归档管理」，图标为归档图标。
+- 点击侧栏行由布局 `selectPanel('archive-ext')` 在主界面渲染该页面；页面内容与设置页 section 完全一致（同一组件、同一 props、同一开关），不存在第二个页面变体。
 - 关闭时注销两个注册；若 `layout.panelInfo.getSnapshot().activePanelId === 'archive-ext'`，先 `layout.selectPanel(null)`。
 - 使用 `ctx.get('layout')`/可选 inject；layout 缺失时侧栏入口仍可注册，但关闭时不强制切面板。
+- 不尝试驱动设置面板（见「已确认的决定」v1.26）：没有官方 API，也无需 DOM 注入。
 
 ### 归档管理 surface
 
@@ -310,7 +314,7 @@ dsh-archive-ext/
 - 取消归档：`remote.restore({ sessionId })`，失败显示本地化错误。
 - 永久删除：打开确认对话框，确认后 `remote.delete({ sessionId })`；成功即从归档页移除并关闭弹窗；live 会话会尝试从内存释放，`liveDetached=true` 时工作区行也立即消失，失败时显示「重启前可能仍显示」；失败留在对话框内。
 - 对话框：`role="dialog" aria-modal="true"`，Esc/遮罩/关闭按钮取消，busy 时禁用重复提交。
-- 设置页与侧栏面板共用同一套 surface 组件，仅外层容器与头部不同；空状态、ghost 提示、相对时间保持一致。
+- 全插件只有这一个归档管理页面：设置页 section 与侧栏固定入口挂载同一个 `ArchiveManagerSurface`，props 相同、内容相同（都包含「在侧栏显示归档管理」开关），只有外层容器不同（设置页内容列 / 主界面 24px 内边距 + 面板内滚动）。空状态、ghost 提示、相对时间保持一致。
 
 ## Host Remote 接口
 
@@ -346,7 +350,7 @@ dsh-archive-ext/
    - 清理 disposer 移除标记与 `<style>`；
    - `querySelectorAll`、label thunk、观察回调抛错时全部被捕获并回退，`apply`/cleanup 不抛；
    - 无 document/body、CSS mask 不受支持时保持默认齿轮。
-4. `node test/verify-client-apply.mjs`：假 ModuleLoader/React/ctx，断言 `$mount`、五条 descriptors、两个 session menu 注册（id/order）、locale 注册、disposer、settings inject 的 remote，以及两个菜单 inject 提供的打开函数。
+4. `node test/verify-client-apply.mjs`：假 ModuleLoader/React/ctx，断言 `$mount`、五条 descriptors、两个 session menu 注册（id/order）、locale 注册、disposer、settings inject 的 remote，两个菜单 inject 提供的打开函数，以及**设置页 section 与侧栏主面板注册渲染同一个页面组件**（同一 surface，仅 `surface` 容器标记不同）。
 5. `node test/verify-typert-manifest.mjs`：Host/Client 五条 invocation 对齐、`open` / `openSessionStorage` 请求 schema、codec 双字段、service key/exportName、patch 包名一致。
 6. 计划同步检查：`PLAN.md` 存在、版本与变更记录完整；交付时列出相对计划的差异。
 
@@ -367,8 +371,8 @@ dsh plugin --profile desktop add E:\path\to\dsh-archive-ext
 3. 新建/未持久化会话点击会话文件夹项时给出「会话日志尚未生成或已被删除」提示，不误开其他目录。
 4. 设置页导航出现「归档管理」section；侧栏底部不再有归档管理按钮。
 5. 设置页中归档管理按工作区分组、倒序、搜索、折叠正常。
-6. 打开「在侧栏显示归档管理」开关后，侧栏全局入口出现「归档管理」行；点击在主界面打开归档管理面板。
-7. 关闭开关后侧栏行消失；若当前正打开归档管理面板，主界面回到普通会话。
+6. 打开「在侧栏显示归档管理」开关后，侧栏全局入口出现「归档管理」行；点击在主界面打开**与设置页完全相同的归档管理页面**（同样带「在侧栏显示归档管理」开关，内容与顺序一致），全插件只有一个归档管理页面。
+7. 关闭开关后侧栏行消失；若当前正打开归档管理页面，主界面回到普通会话。
 8. 取消归档后会话回到侧栏，页面中消失。
 9. 永久删除先二次确认；取消不删除；确认后日志与归档记录消失。
 10. 运行中会话删除被拒绝。
@@ -409,7 +413,8 @@ dsh plugin --profile desktop add E:\path\to\dsh-archive-ext
 - 设置 section 没有官方图标 API；插件市场/`dsh-better-sidebar`/`dsh-skill-mcp-panel` 都用「标记自己导航行再换图标」的办法。本插件采用同样窄范围做法，并把整个增强包在异常捕获里：失败即回退 DSH 默认齿轮。上游若新增 `icon` 字段，应删除该 DOM 增强。
 - 增强只观察 `document.body` 的 childList/characterData，只按本插件本地化 label 匹配 `[role="dialog"] nav button`，不读取/修改其他插件的节点内容。
 - 侧栏固定开关保存在浏览器 `localStorage`（key `dsh-archive-ext.sidebar`），跨重启保留；不跨浏览器同步。
-- 归档管理使用设置页 section；可选的侧栏入口使用 layout `main` 面板，不再是独立固定模态框。
+- 归档管理只有**一个页面**：设置页 section 与可选侧栏入口挂载同一个页面组件与同一份内容（都含「在侧栏显示归档管理」开关）；侧栏入口使用 layout `main` 面板（不再是独立固定模态框）。
+- DSH 0.2.1 没有「打开设置面板并选中某个 section」的插件 API（设置面板 open/activeId 只存在 ui-settings-general 内部 store；`settings.section` 只收到 `close`；`settings.launcher` 是单槽且被账号菜单占用），因此侧栏入口不能跳进设置面板，也不需要为此新增 DOM 注入。
 - 包名属于用户自有 scope；改 scope 需同步修改所有标识并更新本文件。
 - 当前环境无法进行浏览器 DOM/截图验证；可见 UI 由用户重启后验收。
 - 安装到 `desktop` profile 需要一次工作区外写入批准；不自动重启 DSH。
@@ -443,6 +448,7 @@ dsh plugin --profile desktop add E:\path\to\dsh-archive-ext
 - [ ] 设置页导航「归档管理」图标与侧栏归档图标一致（明暗主题）；异常时自动回退 DSH 默认齿轮。
 - [ ] 设置页开关优先使用 DSH 原生 `Switch`，明暗主题下与内置插件列表开关的主题色/形状/状态色一致。
 - [ ] 「在侧栏显示归档管理」开关可注册/注销侧栏全局面板入口，并在关闭时离开已打开的面板。
+- [ ] 侧栏入口与设置页展示的是**同一个**归档管理页面（都带「在侧栏显示归档管理」开关，内容/顺序一致），全插件只有一个归档管理页面。
 - [x] 运行中拒绝、live 删除一次完成（归档页与工作区列表均消失）、无效记录清理均正常。
 - [x] 未修改其他第三方插件；未在本机做共存实测。
 - [x] 后续需求变更先更新 `PLAN.md` 再实现。

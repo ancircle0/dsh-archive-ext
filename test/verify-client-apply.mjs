@@ -252,6 +252,21 @@ assert.ok(row, "sidebar panellist registration");
 assert.equal(row.options.order, 2);
 assert.equal(typeof row.component, "function");
 
+// One page, two seats: the settings section and the sidebar entry mount the very
+// same page component with the same props and differ only in the container mark.
+const settingsTree = settings.component({});
+const panelTree = main.component({});
+assert.equal(
+  settingsTree.args[0],
+  panelTree.args[0],
+  "both seats must render the same archive page component",
+);
+assert.equal(settingsTree.args[1].surface, "settings");
+assert.equal(panelTree.args[1].surface, "panel");
+// The "show in sidebar" switch is part of that one page, so it must not be
+// gated on which seat renders it.
+assert.match(source, /const toggleRow = h\(/, "the sidebar switch must render in every seat");
+
 // Toggle off while the panel is active: it is unregistered and selection is cleared.
 layout.activePanelId = "archive-ext";
 settingsInjected.setSidebarEnabled(false);

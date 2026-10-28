@@ -10,7 +10,9 @@
  *     archived sessions grouped by workspace, with search, unarchive and
  *     confirmed permanent delete;
  *   - an optional sidebar global-panel entry (`sidebar.panellist` + `main`)
- *     toggled from that settings section.
+ *     toggled from that settings section. It renders the very same page (same
+ *     component, same props, sidebar switch included), so the plugin owns
+ *     exactly one archive page rather than two variants of it.
  *
  * Host communication goes through the `archiveExt` Remote namespace mounted by
  * this module and served by `lib/service.js`.
@@ -128,7 +130,7 @@ window.__ModuleLoader__.load({
       "menu.openSessionFolder": "打开会话文件夹",
       "settings.nav": "归档管理",
       "settings.pin": "在侧栏显示归档管理",
-      "settings.pinDesc": "开启后，在侧栏全局入口显示「归档管理」，点击即可打开。",
+      "settings.pinDesc": "开启后，侧栏全局入口显示「归档管理」，点击打开本页；关闭后侧栏不再显示该入口。",
       "settings.pinUnsupported": "当前 DSH 版本不支持侧栏全局入口。",
       "settings.on": "已开启",
       "settings.off": "已关闭",
@@ -176,7 +178,7 @@ window.__ModuleLoader__.load({
       "menu.openSessionFolder": "Open session folder",
       "settings.nav": "Archive manager",
       "settings.pin": "Show archive manager in sidebar",
-      "settings.pinDesc": "Adds an “Archive manager” entry to the sidebar’s global panel list; click it to open the page.",
+      "settings.pinDesc": "Adds an “Archive manager” entry to the sidebar’s global panel list; that entry opens this same page. Turn it off to hide the entry again.",
       "settings.pinUnsupported": "This DSH version does not support sidebar global panels.",
       "settings.on": "On",
       "settings.off": "Off",
@@ -594,7 +596,11 @@ window.__ModuleLoader__.load({
       });
     }
 
-    // ---- archive manager surface --------------------------------------------
+    // ---- archive manager page -----------------------------------------------
+    // One page, two seats: the settings section and the optional sidebar entry
+    // mount this same component with the same props, so the archive manager the
+    // user sees is identical everywhere (sidebar switch included). `surface`
+    // only picks the outer container styling; it must never change the content.
     function ArchiveManagerSurface(props) {
       const {
         surface = "panel",
@@ -701,24 +707,21 @@ window.__ModuleLoader__.load({
             h("span", { className: "ae-toggle-state" }, sidebarEnabled ? t("settings.on") : t("settings.off")),
           );
 
-      const toggleRow =
-        surface === "settings"
-          ? h(
-              "div",
-              { className: "ae-toggle-row" },
-              h(
-                "div",
-                { className: "ae-toggle-text" },
-                h("div", { className: "ae-toggle-label" }, t("settings.pin")),
-                h(
-                  "div",
-                  { className: "ae-toggle-desc" },
-                  sidebarSupported ? t("settings.pinDesc") : t("settings.pinUnsupported"),
-                ),
-              ),
-              switchControl,
-            )
-          : null;
+      const toggleRow = h(
+        "div",
+        { className: "ae-toggle-row" },
+        h(
+          "div",
+          { className: "ae-toggle-text" },
+          h("div", { className: "ae-toggle-label" }, t("settings.pin")),
+          h(
+            "div",
+            { className: "ae-toggle-desc" },
+            sidebarSupported ? t("settings.pinDesc") : t("settings.pinUnsupported"),
+          ),
+        ),
+        switchControl,
+      );
 
       const search = h(
         "div",
@@ -853,10 +856,12 @@ window.__ModuleLoader__.load({
       return h(React.Fragment, null, content, dialog);
     }
 
+    /** The settings section seat; renders the one archive page. */
     function ArchiveSettingsSection(props) {
       return h(ArchiveManagerSurface, { ...props, surface: "settings" });
     }
 
+    /** The sidebar entry seat; renders the same archive page in the main column. */
     function ArchiveSidebarPanel(props) {
       return h(ArchiveManagerSurface, { ...props, surface: "panel" });
     }

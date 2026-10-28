@@ -1,6 +1,6 @@
 {
   "name": "@ancircle0/dsh-archive-ext",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "DeepSeek Harness extension: open a session's workspace folder or session log folder in File Explorer, and manage archived sessions in a settings page.",
   "type": "module",
   "main": "index.js",
