@@ -33,19 +33,37 @@ window.__ModuleLoader__.load({
     } catch {
       ui = null;
     }
-    // The host's own on/off control (the one its plugin list uses). Resolve it
-    // defensively so an older host without the export still gets the fallback.
-    const HostSwitch = (() => {
-      let value;
+    // The host's own browser store module (the one the Settings shell and the
+    // Plugin Manager use for their snapshot stores). Resolved defensively: a
+    // host without the export keeps the tiny local equivalent below.
+    let storeModule = null;
+    try {
+      storeModule = require("@deepseek-ai/dsh-client-store");
+    } catch {
+      storeModule = null;
+    }
+
+    /**
+     * Look up one host Client primitive by export name.
+     * @param {string} name - export name on `@deepseek-ai/dsh-client-ui-primitives`.
+     * @returns {Function|object|null} the component, or null when the host has no such export.
+     */
+    function hostPrimitive(name) {
       try {
-        value = ui && ui.Switch;
+        const value = ui && ui[name];
+        if (typeof value === "function") return value;
+        if (value !== null && typeof value === "object" && "$$typeof" in value) return value;
       } catch {
-        return null;
+        /* an exotic export must not break the plugin */
       }
-      if (typeof value === "function") return value;
-      if (value !== null && typeof value === "object" && "$$typeof" in value) return value;
       return null;
-    })();
+    }
+
+    // Host controls, so the plugin's switch, buttons and confirm dialog are the
+    // same components (and the same theme tokens) the shipped pages use.
+    const HostSwitch = hostPrimitive("Switch");
+    const HostButton = hostPrimitive("Button");
+    const HostModal = hostPrimitive("Modal");
 
     const NS = "archiveExt";
     const SIDEBAR_PANEL_ID = "archive-ext";
@@ -85,6 +103,9 @@ window.__ModuleLoader__.load({
 .ae-btn-danger{color:var(--dsw-alias-state-error-primary,#e5484d);}
 .ae-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger,rgba(229,72,77,.1));}
 .ae-btn[disabled]{opacity:.5;cursor:default;}
+.ae-row-action{flex:none;font-size:12px;line-height:18px;padding:4px 8px;border-radius:8px;white-space:nowrap;}
+.ae-action-restore{color:var(--dsw-alias-brand-primary,#4a7dff);}
+.ae-action-danger{color:var(--dsw-alias-state-error-primary,#e5484d);}
 .ae-orphan .ae-row-icon{color:var(--dsw-alias-state-warn-primary,#d99a06);}
 .ae-orphan .ae-row-title{color:var(--dsw-alias-label-secondary,inherit);}
 .ae-empty{color:var(--dsw-alias-label-tertiary,inherit);padding:40px 12px;font-size:13px;line-height:20px;text-align:center;}
@@ -92,7 +113,8 @@ window.__ModuleLoader__.load({
 .ae-error{color:var(--dsw-alias-state-error-primary,#e5484d);padding:8px 24px;font-size:12px;line-height:18px;}
 .ae-confirm-overlay{position:fixed;inset:0;z-index:1100;background:var(--dsw-alias-bg-mask-1,rgba(0,0,0,.4));display:flex;align-items:center;justify-content:center;padding:24px;}
 .ae-confirm{position:relative;display:flex;flex-direction:column;width:440px;max-width:calc(100vw - 48px);border:1px solid var(--dsw-alias-border-inverted,rgba(128,128,128,.3));border-radius:24px;background:var(--dsw-alias-bg-layer-2,#fff);color:var(--dsw-alias-label-primary,inherit);box-shadow:var(--dsw-shadow-lv3,0 12px 40px rgba(0,0,0,.25));}
-.ae-confirm-body{padding:4px 24px 16px;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary,inherit);}
+.ae-dialog-body{padding:4px 0 8px;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary,inherit);}
+.ae-confirm .ae-dialog-body{padding:4px 24px 16px;}
 .ae-confirm-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 24px 20px;}
 .ae-confirm-btn{border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.2));background:transparent;color:var(--dsw-alias-label-primary,inherit);font-family:inherit;font-size:13px;line-height:18px;padding:6px 14px;border-radius:10px;cursor:pointer;}
 .ae-confirm-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12));}
@@ -423,15 +445,21 @@ window.__ModuleLoader__.load({
     }
 
     // ---- stores --------------------------------------------------------------
-    function createStore(initial) {
+    /**
+     * A tiny snapshot store with the host's shape, used only when the host's
+     * `@deepseek-ai/dsh-client-store` module is unavailable.
+     * @param {unknown} initial - first snapshot.
+     * @returns {{ getSnapshot: () => unknown, set: (next: unknown) => void, subscribe: (listener: () => void) => () => void }}
+     */
+    function fallbackSnapshotStore(initial) {
       let value = initial;
       const listeners = new Set();
       return {
-        get: () => value,
+        getSnapshot: () => value,
         set: (next) => {
           if (Object.is(value, next)) return;
           value = next;
-          for (const listener of listeners) listener();
+          for (const listener of [...listeners]) listener();
         },
         subscribe: (listener) => {
           listeners.add(listener);
@@ -440,8 +468,32 @@ window.__ModuleLoader__.load({
       };
     }
 
-    function useStore(store) {
-      return React.useSyncExternalStore(store.subscribe, store.get);
+    /**
+     * Create one snapshot store, preferring the host's implementation.
+     * @param {unknown} initial - first snapshot.
+     * @returns {{ getSnapshot: () => unknown, set: (next: unknown) => void, subscribe: (listener: () => void) => () => void }}
+     */
+    function createStore(initial) {
+      if (storeModule && typeof storeModule.createSnapshotStore === "function") {
+        try {
+          return storeModule.createSnapshotStore(initial);
+        } catch {
+          /* fall through to the local equivalent */
+        }
+      }
+      return fallbackSnapshotStore(initial);
+    }
+
+    /**
+     * Subscribe a component to one snapshot store.
+     * @param {{ getSnapshot: () => unknown, subscribe: (listener: () => void) => () => void }} source - store.
+     * @returns {unknown} the current snapshot.
+     */
+    function useStore(source) {
+      return React.useSyncExternalStore(
+        (listener) => source.subscribe(listener),
+        () => source.getSnapshot(),
+      );
     }
 
     // ---- formatting / grouping ----------------------------------------------
@@ -594,6 +646,28 @@ window.__ModuleLoader__.load({
         label: t("menu.openSessionFolder"),
         onSelect: () => void openSessionFolder(sessionId),
       });
+    }
+
+    /**
+     * One action button: the host's `Button` when the export exists, otherwise a
+     * plain button with the local fallback class.
+     * @param {{ variant?: string, className?: string, disabled?: boolean, autoFocus?: boolean, onClick?: () => void }} props - host button props.
+     * @param {string} fallbackClassName - local class used by the fallback button.
+     * @param {string} label - visible text.
+     * @returns {object} the element.
+     */
+    function actionButton(props, fallbackClassName, label) {
+      if (HostButton) return h(HostButton, { ...props, children: label });
+      return h(
+        "button",
+        {
+          type: "button",
+          className: fallbackClassName,
+          disabled: props.disabled,
+          onClick: props.onClick,
+        },
+        label,
+      );
     }
 
     // ---- archive manager page -----------------------------------------------
@@ -780,25 +854,25 @@ window.__ModuleLoader__.load({
                     { className: "ae-row-actions" },
                     orphan
                       ? null
-                      : h(
-                          "button",
+                      : actionButton(
                           {
-                            type: "button",
-                            className: "ae-btn ae-btn-restore",
+                            variant: "ghost",
+                            className: "ae-row-action ae-action-restore",
                             disabled: busy !== null,
                             onClick: () => void restore(session.id),
                           },
+                          "ae-btn ae-btn-restore",
                           restoring ? t("page.restoring") : t("page.restore"),
                         ),
-                    h(
-                      "button",
+                    actionButton(
                       {
-                        type: "button",
-                        className: "ae-btn ae-btn-danger",
+                        variant: "ghost",
+                        className: "ae-row-action ae-action-danger",
                         disabled: busy !== null,
                         onClick: () =>
                           setDeleteTarget({ sessionId: session.id, displayTitle: title, orphan }),
                       },
+                      "ae-btn ae-btn-danger",
                       t("page.delete"),
                     ),
                   ),
@@ -870,7 +944,10 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = React.useState(false);
       const [error, setError] = React.useState(null);
 
+      // The host Modal owns Escape, the mask, focus and layering; this listener
+      // only serves the local fallback shell.
       React.useEffect(() => {
+        if (HostModal) return undefined;
         const onKeyDown = (event) => {
           if (event.key !== "Escape") return;
           event.stopPropagation();
@@ -906,6 +983,52 @@ window.__ModuleLoader__.load({
       };
 
       const title = target.displayTitle || target.sessionId;
+      const body = h(
+        "div",
+        { className: "ae-dialog-body" },
+        target.orphan
+          ? t("page.deleteOrphanDesc", { title })
+          : t("page.deleteDesc", { title }),
+      );
+      const errorBanner = error ? h("div", { className: "ae-error", role: "alert" }, error) : null;
+      const footer = h(
+        React.Fragment,
+        null,
+        actionButton(
+          { variant: "outline", disabled: busy, onClick: close },
+          "ae-confirm-btn",
+          t("page.cancel"),
+        ),
+        actionButton(
+          {
+            variant: "outline",
+            className: "ae-action-danger",
+            disabled: busy,
+            autoFocus: true,
+            onClick: () => void confirm(),
+          },
+          "ae-confirm-btn ae-confirm-danger",
+          busy ? t("page.deleting") : t("page.deleteConfirm"),
+        ),
+      );
+
+      if (HostModal) {
+        return h(
+          HostModal,
+          {
+            open: true,
+            title: t("page.deleteTitle"),
+            closeLabel: t("page.close"),
+            onClose: close,
+            className: "ae-dialog",
+            footer,
+          },
+          body,
+          errorBanner,
+        );
+      }
+
+      // Fallback shell for a host that does not export `Modal`.
       return h(
         "div",
         { className: "ae-confirm-overlay", onClick: close },
@@ -935,33 +1058,9 @@ window.__ModuleLoader__.load({
               "✕",
             ),
           ),
-          h(
-            "div",
-            { className: "ae-confirm-body" },
-            target.orphan
-              ? t("page.deleteOrphanDesc", { title })
-              : t("page.deleteDesc", { title }),
-          ),
-          error ? h("div", { className: "ae-error", role: "alert" }, error) : null,
-          h(
-            "div",
-            { className: "ae-confirm-actions" },
-            h(
-              "button",
-              { type: "button", className: "ae-confirm-btn", disabled: busy, onClick: close },
-              t("page.cancel"),
-            ),
-            h(
-              "button",
-              {
-                type: "button",
-                className: "ae-confirm-btn ae-confirm-danger",
-                disabled: busy,
-                onClick: () => void confirm(),
-              },
-              busy ? t("page.deleting") : t("page.deleteConfirm"),
-            ),
-          ),
+          body,
+          errorBanner,
+          h("div", { className: "ae-confirm-actions" }, footer),
         ),
       );
     }
@@ -1518,6 +1617,9 @@ window.__ModuleLoader__.load({
     exports.apply = apply;
     exports.inject = ["slots", "remote"];
     exports.CLIENT_REMOTE = CLIENT_REMOTE;
+    // Exposed for test/verify-client-apply.mjs: which host primitives this build
+    // resolved, so a missing export is visible instead of silently degrading.
+    exports.CLIENT_UI = { hostPrimitive, HostSwitch, HostButton, HostModal, createStore };
     // Exposed for test/nav-icon.test.mjs: the enhancement is DOM-only and its
     // failure paths must stay reachable from a test harness.
     exports.CLIENT_NAV_ICON = {

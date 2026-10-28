@@ -34,6 +34,9 @@
 | v1.24 | 2026-10-20 | 包名改为 `@ancircle0/dsh-archive-ext`，匹配已创建的 npm org；同步 package / patch / Typert / client loader / 测试 / README / LICENSE | 单包标识统一；旧名未发布，无迁移负担 |
 | v1.25 | 2026-10-20 | 准备 npm 公开发布：移除 `private`，增加 `publishConfig.access=public` 与 repository/homepage/bugs/author/keywords；README 安装章节改为 npm 优先，保留本地目录安装 | 包可 `npm publish`；用户可直接按包名安装 |
 | v1.26 | 2026-10-28 | 消除「两个归档管理页面」：侧栏固定入口打开的主界面页面此前是去掉「在侧栏显示归档管理」开关的独立变体。现两个入口渲染同一个页面组件与同一份内容（都带开关），只保留一个页面；`ArchiveManagerSurface` 不再按 `surface` 决定是否渲染开关行，只保留外层容器差异。版本号升到 `0.1.4` | 侧栏入口与设置页看到的归档管理完全一致；无新增 slot/DOM 依赖；`surface` 只表示外层容器样式 |
+| v1.27 | 2026-10-28 | 立**禁止 link 安装**的硬约束：插件只能以 npm 包形态安装（registry 包或 `npm pack` 产出的 tarball），不得用 `link:` / 目录软链。原因：`dsh-app-boot` 解析层对 profiles 树内的包走 profile 映射（宿主包名由运行时表解析），对链接到外部目录的包走 `routeLinked`（只解析链接目标自己的 `node_modules`），实测 link 安装下 `import "@deepseek-ai/dsh-typert-protocol"` 直接 `ERR_MODULE_NOT_FOUND`。同时把 `@deepseek-ai/dsh-client-ui-primitives` 加入 `peerDependencies`（Client 半用它取宿主 `Switch` / `MenuItemButton`，取不到时回退自带控件）。版本号升到 `0.1.5` | 安装形态与 npmjs 真实形态一致，宿主包 import 走官方 peer-aware 解析；`dsh-client-ui-primitives` 属 `@deepseek-ai/dsh-*`，参与 DSH 版本闸门 |
+| v1.28 | 2026-10-28 | **删除手写的 `typert.host.js`**，改用宿主 Gateway 的 SRC 模式：`dsh-typert-loader` 文档写明「Packages without the export are skipped silently」，`dsh-api-gateway` 的 `resolveDescriptor()` 在注册表没有该 endpoint 的严格定义时回落 `resolveSrcDescriptor()`——按服务的 `typertRemote` 绑定 + 原型 `remote-methods` 标记解析，参数名即线名（`request`）。因此 `TypertRemoteService` + `@Remote()` 已经足够，`./typert` 清单、`zod` 依赖、`test/verify-typert-manifest.mjs` 全部移除。版本号升到 `0.1.6` | 少约 340 行手写协议描述和一个运行时依赖（`dependencies` 变为空）；代价是失去严格线校验，参数/结果按 JSON pass-through（与 Client 的 passthrough codec 一致） |
+| v1.29 | 2026-10-28 | 停用三处自造实现，改用宿主组件/模块：①删除确认框改宿主 `ui.Modal`（`open/title/closeLabel/onClose/className/footer`，Escape/遮罩/焦点/层级由宿主管）；②行内动作与对话框按钮改宿主 `ui.Button`（`variant: ghost/outline`；宿主无 danger 变体，危险色用 `--dsw-alias-state-error-primary` 的本地类）；③`ghostIds`/`notice`/侧栏开关 4 个 store 改宿主 `@deepseek-ai/dsh-client-store` 的 `createSnapshotStore` + `React.useSyncExternalStore`。三者都保留本地回退（宿主缺导出时用旧实现，测试用桩覆盖）。版本号升到 `0.1.7` | 与宿主外观/行为同源，去掉自绘遮罩与两套按钮样式；`CLIENT_UI` 导出让“宿主导出没取到”在测试中可见 |
 
 ## 目标
 
@@ -50,13 +53,13 @@
 - 插件以标准 bundle 安装进 `desktop` profile；DSH 重启后会话 “…” 菜单的两个入口都出现且可用。
 - 不修改、不依赖其他第三方插件。
 - 永久删除只删除目标会话的日志目录与归档记录；运行中的智能体会被拒绝；删除失败有可读错误。
-- 静态检查、单元测试、client apply 冒烟测试、Typert 清单自检全部通过。
+- 静态检查、单元测试、client apply 冒烟测试全部通过。
 - 安装后 profile 配置中出现 `archive-ext` 行，且不出现该 bundle 的 `skipping profile bundle` 诊断。
 - `PLAN.md` 存在，内容与已批准计划一致，并包含变更记录。
 
 ## 已确认的决定
 
-- 新建独立插件，包名 `@ancircle0/dsh-archive-ext`，版本 `0.1.4`，公开 npm 包（`publishConfig.access = "public"`）。
+- 新建独立插件，包名 `@ancircle0/dsh-archive-ext`，版本 `0.1.7`，公开 npm 包（`publishConfig.access = "public"`）。
 - **放弃工作区行菜单的 DOM 注入**（v1.15–v1.17 的 `installWorkspaceMenuAction` / 归属识别 / 回退状态全部移除）：DSH 没有工作区菜单 slot，注入随宿主 DOM 变化易失效。菜单入口全部改用官方 `sidebar.workspaces.session.menu.item`。
 - 会话 “…” 菜单新增两个条目（均为官方 slot 条目，使用 `MenuItemButton`）：
   - `archive-ext.open-workspace-folder`，order 430，label「打开工作区文件夹」，图标文件夹；调用 `open({ sessionId })`，由 Host 解析该会话所属工作区目录（工作区路径优先，回退 live/persisted `cwd`）。
@@ -67,9 +70,15 @@
 - 归档管理入口从 footer 迁移到**设置页 section**：注册 `settings.section`（id `archive-ext`，order 50，label「归档管理」）。DSH 没有设置 section 图标 API；设置页导航图标通过**可失败、可回退的导航行增强**与侧栏保持一致：只标记本插件自己的那一行，用 CSS mask 绘制同一个归档图标，异常时清理并回退到 DSH 默认齿轮。
 - 可选侧栏固定入口使用官方 `sidebar.panellist`（列表行）+ `main`（keyed 面板内容）+ `layout.selectPanel(id)`；开关状态保存在浏览器 `localStorage`，开启后侧栏出现归档管理行，点击在主界面渲染**与设置页完全相同的归档管理页面**（同一个 `ArchiveManagerSurface`，同样包含「在侧栏显示归档管理」开关），关闭时若当前面板是归档管理则 `selectPanel(null)`。
 - **只有一个归档管理页面**（v1.26）：两个入口（设置页 section、侧栏固定入口）挂载同一个页面组件与同一份内容，不再存在“侧栏面板版没有开关”的第二个页面变体。DSH 没有“打开设置页并定位到某个 section”的插件 API（设置面板的开关/选中态只存在 ui-settings-general 内部 store；`settings.section` 只拿到 `close`；`settings.launcher` 是单槽且已被账号菜单占用），因此不采用“侧栏入口去驱动设置面板”的做法，也不为此新增 DOM 注入。
-- 设置页开关优先使用 DSH ui-primitives 的 `Switch`（宿主插件列表同款，props：`checked/onChange/label/disabled/title`），完全继承宿主的主题色、形状与状态色；仅在宿主未导出 `Switch` 时回退到本插件自带开关（可见 token + 状态文案）。不再自绘宿主开关的配色。
+- Client 半的控件一律优先用宿主实现，取不到才用本地回退（v1.29 扩展）：
+  - 开关 `Switch`（props `checked/onChange/label/disabled/title`）、会话菜单行 `MenuItemButton`（v1.11/v1.18 起）；
+  - 行内动作与对话框按钮 `Button`（`variant: ghost/outline`、`disabled`、`autoFocus`；宿主无 danger 变体，危险色用本地类 + `--dsw-alias-state-error-primary`）；
+  - 删除确认框 `Modal`（`open/title/closeLabel/onClose/className/footer`，Escape/遮罩/焦点/层级由宿主管）。
+  - 这些 id 都由浏览器模块表提供，统一通过 `require("@deepseek-ai/dsh-client-ui-primitives")` 获取，并把该包声明进 `peerDependencies`（v1.27）。任一导出缺失时回退到本插件自带控件（可见 token + `role="switch"`/`aria-checked`、`role="menuitem"`、自绘遮罩对话框），因此宿主导出变化只降级外观、不会让 slot 崩溃。
+  - 注意：DSH 的插件作者规范 `references/practices.md` 建议不要 require 宿主 Client 包；这里是有意的取舍（与宿主控件完全一致），代价是外观依赖宿主导出。
 - footer 只保留一个不可见的 toast 注册（用于“打开资源管理器失败”等全局提示），不再提供归档管理入口。
-- 目标运行时 DSH 0.1.7+（当前安装为 0.2.1-rc.2），优先验证 Windows；打开目录的命令同时覆盖 macOS/Linux。
+- **硬约束（v1.27）：禁止 link 安装。** 插件一律以 npm 包形态安装 —— npmjs registry 包，或 `npm pack` 产出的 tarball（`dsh plugin --profile <p> add ./<name>-<version>.tgz`）。**不得**用 `link:`、目录软链或直接 `add <本地目录>`：那会把插件放在 profiles 树外，`dsh-app-boot` 走 `routeLinked` 只解析链接目标自己的 `node_modules`，Host 半的 `import "@deepseek-ai/dsh-typert-protocol"` / `"@deepseek-ai/cordis"` 会 `ERR_MODULE_NOT_FOUND` 导致整个插件不激活。本地开发改代码后必须重新 pack + 安装（或发 registry），不接受 link。
+- 目标运行时 DSH 0.1.7+（当前安装为 0.2.1-rc.3），优先验证 Windows；打开目录的命令同时覆盖 macOS/Linux。
 - 安装后不自行重启 DSH（会终止当前会话），由用户重启并验收。
 
 ## 方案演进与未采用方案
@@ -152,9 +161,8 @@ dsh-archive-ext/
 ├── package-lock.json
 ├── cordis.patch.yml
 ├── index.js                 # Host 入口（re-export service）
-├── lib/service.js           # ArchiveExtService（TypertRemoteService）
+├── lib/service.js           # ArchiveExtService（TypertRemoteService + @Remote 标记）
 ├── lib/core.js              # 纯逻辑：restore/delete/state/open/openSessionStorage + 可注入依赖
-├── typert.host.js           # Typert Host manifest
 ├── client.js                # Client bundle（UI + Remote 调用）
 ├── locale/en.json           # 插件元数据（英文）
 ├── locale/zh.json           # 插件元数据（中文）
@@ -162,7 +170,6 @@ dsh-archive-ext/
 ├── test/core.test.mjs
 ├── test/nav-icon.test.mjs   # 设置页导航图标增强 + 异常回退
 ├── test/verify-client-apply.mjs    # client apply 冒烟/契约
-├── test/verify-typert-manifest.mjs # Typert Host/Client 契约自检
 ├── README.md                # 面向使用者的介绍/安装/使用文档
 ├── LICENSE
 └── .gitignore
@@ -172,26 +179,28 @@ dsh-archive-ext/
 
 ### package.json
 
-- `name: "@ancircle0/dsh-archive-ext"`，`version: "0.1.4"`，`type: "module"`；无 `private`，`publishConfig.access = "public"`。
+- `name: "@ancircle0/dsh-archive-ext"`，`version: "0.1.7"`，`type: "module"`；无 `private`，`publishConfig.access = "public"`。
 - 发布元数据：`author`、`repository`、`homepage`、`bugs`、`keywords` 指向 `github.com/ancircle0/dsh-archive-ext`。
 - `main: "index.js"`。
-- `exports`：`.`、`./client`、`./typert`、`./cordis.patch.yml`、`./package.json`、`./locale/*.json`、`./icon`。
-- `files`：`index.js`、`client.js`、`typert.host.js`、`cordis.patch.yml`、`lib/*.js`、`locale/*.json`、`icon.svg`、`PLAN.md`、`README.md`、`LICENSE`。
+- `exports`：`.`、`./client`、`./cordis.patch.yml`、`./package.json`、`./locale/*.json`、`./icon`（**没有 `./typert`**：v1.28 起不用手写清单，Gateway 走 SRC 模式）。
+- `files`：`index.js`、`client.js`、`cordis.patch.yml`、`lib/*.js`、`locale/*.json`、`icon.svg`、`PLAN.md`、`README.md`、`LICENSE`。
 - `dsh`：
   ```json
   { "bundle": { "patch": "./cordis.patch.yml" }, "client": { "platform": "web" } }
   ```
 - `peerDependencies`：
-  - `@deepseek-ai/cordis: "^4.0.1"`
-  - `@deepseek-ai/dsh-storage-domain: "^0.1.7-rc.0 || ^0.2.0-rc.1 || ^0.2.1-rc.0"`
-  - `@deepseek-ai/dsh-typert-protocol: "^0.1.7-rc.0 || ^0.2.0-rc.1 || ^0.2.1-rc.0"`
-- `dependencies`：`zod: "^4.4.3"`。
+  - `@deepseek-ai/cordis: "^4.0.1"` 
+  - `@deepseek-ai/dsh-client-store: "^0.1.7-rc.0 || ^0.2.0-rc.1 || ^0.2.1-rc.0"` (Client 半 require 的浏览器模块 id，v1.29 起用于快照 store)
+  - `@deepseek-ai/dsh-client-ui-primitives: "^0.1.7-rc.0 || ^0.2.0-rc.1 || ^0.2.1-rc.0"` (Switch / Button / Modal / MenuItemButton，参与 DSH 版本闸门)
+  - `@deepseek-ai/dsh-storage-domain: "^0.1.7-rc.0 || ^0.2.0-rc.1 || ^0.2.1-rc.0"` 
+  - `@deepseek-ai/dsh-typert-protocol: "^0.1.7-rc.0 || ^0.2.0-rc.1 || ^0.2.1-rc.0"` 
+- `dependencies`：空（v1.28 起不再需要 `zod`）。
 - `scripts`：`check`、`test`、`verify`。
 
 ### 发布
 
-- 版本号与 Git tag 对齐（当前 `0.1.4` / `v0.1.4`）；`npm publish --access public`，`publishConfig` 已声明 public。
-- README 安装命令以 npm 包名为主，保留本地目录安装供开发。
+- 版本号与 Git tag 对齐（当前 `0.1.7` / `v0.1.7`）；`npm publish --access public`，`publishConfig` 已声明 public。
+- README 安装命令以 npm 包名为主；本地开发用 `npm pack` 出的 tarball 安装（**不用目录/link**，见 v1.27 硬约束）。
 - DSH 插件管理没有自动升级操作；升级需要卸载旧版本后再安装新版本。
 
 ### cordis.patch.yml
@@ -245,18 +254,15 @@ dsh-archive-ext/
 
 - re-export `ArchiveExtService` 与 default。
 
-### typert.host.js
+### Remote 契约（无 `./typert` 清单，Gateway 走 SRC 模式）
 
-- `package: "@ancircle0/dsh-archive-ext"`，`face: "host"`。
-- 五条 invocation：
-  - `dsh-archive-ext#archiveExt/restore`
-  - `dsh-archive-ext#archiveExt/delete`
-  - `dsh-archive-ext#archiveExt/state`
-  - `dsh-archive-ext#archiveExt/open`
-  - `dsh-archive-ext#archiveExt/openSessionStorage`
-- `open` 与 `openSessionStorage` 的请求均为 `{ sessionId }`；其余 `restore` / `delete` 同。
-- 每个 strict codec 同时带 `schema`（zod 实例）与 `create`（memoized 工厂）。
-- `model.services[0]`：`key: "archiveExt"`、`exportName: "ArchiveExtService"`，成员与 types 声明（新增 `ArchiveExtOpenSessionStorageRequest` / `ArchiveExtOpenSessionStorageResult`，移除 `WorkspaceId`）。
+- v1.28 起**不再提供** `typert.host.js` / `./typert` 导出。`dsh-typert-loader` 对没有该导出的包「skipped silently」（增量扫描按 entry 名，不会为缺清单报错）。
+- Host 侧契约由 `lib/service.js` 的两类标记提供（`TypertRemoteService` 构造 + `@Remote()` 标记自动写入）：
+  - 实例上的 `typertRemote = { service, serviceKey: "archiveExt", namespace: "archiveExt" }`；
+  - 原型上的 `@deepseek-ai/dsh-typert-protocol/remote-methods` 记录：`{ version: 1, methods: [{ method, invocation: { kind: "direct" } }] }`，五条：`restore` / `delete` / `state` / `open` / `openSessionStorage`。
+- Gateway 解析顺序（`dsh-api-gateway` `resolveDescriptor`）：注册表里该 endpoint 的严格定义 → 若无则 `resolveSrcDescriptor()`：遍历 `ctx.reflect.props` 的 service，按 `typertRemote.namespace` 与 `remoteMethods(original)` 匹配方法与标记；**参数名即线名**（我们的方法签名都是 `request` / 无参，正好对应 Client 端 `wire: "request"`），codec 为 `src-json`（JSON pass-through）。
+- 因此请求/结果形状完全由 `lib/core.js` 的校验 + Client 端 passthrough codec 决定，没有第二份 schema 需要同步。
+- 注意 `hasSeen` 规则：同一个进程里若曾经注册过该 endpoint 的严格定义、随后被撤回，SRC 回退会被禁止（`gateway/definition-unavailable`）。从旧版本升级到 v1.28 时**必须重启 DSH**，不能只做热安装。
 
 ## Client 半
 
@@ -272,7 +278,7 @@ dsh-archive-ext/
 
 ### 共享状态
 
-- `ghostIds`、`notice`，通过 `useSyncExternalStore` 订阅；notice 自动 4 秒消失。
+- `ghostIds`、`notice`、侧栏开关（enabled/supported）共 4 个快照 store：优先 `require("@deepseek-ai/dsh-client-store").createSnapshotStore(initial)`（宿主 Settings shell / Plugin Manager 同款），用 `React.useSyncExternalStore(store.subscribe, store.getSnapshot)` 订阅；宿主没有该模块时回退到本插件 20 行的等价实现（`fallbackSnapshotStore`）。notice 自动 4 秒消失。
 - 删除确认状态改为每个归档管理 surface 的局部 state，避免设置页与侧栏面板同时挂载时出现两个确认框。
 
 ### 会话行菜单项（官方 slot，两个入口）
@@ -310,10 +316,10 @@ dsh-archive-ext/
 - 数据：`useWorkspaces(s => s.items)`、`archivedSessionIds`、`useSessions(s => s.byId)`、`s.ids`。
 - 分组：按工作区；未分组单独一组；无 session summary 的记录进入「无效的归档记录」。
 - 搜索：标题、工作区名、`cwd`；搜索时全部展开。
-- 行：归档图标、标题、相对时间、`cwd` tooltip；hover/focus 显示「取消归档」「永久删除」。
+- 行：归档图标、标题、相对时间、`cwd` tooltip；hover/focus 显示「取消归档」「永久删除」（两个动作是宿主 `ui.Button`，`variant: "ghost"` + 本地色类；无宿主导出时回退 `<button class="ae-btn …">`）。
 - 取消归档：`remote.restore({ sessionId })`，失败显示本地化错误。
 - 永久删除：打开确认对话框，确认后 `remote.delete({ sessionId })`；成功即从归档页移除并关闭弹窗；live 会话会尝试从内存释放，`liveDetached=true` 时工作区行也立即消失，失败时显示「重启前可能仍显示」；失败留在对话框内。
-- 对话框：`role="dialog" aria-modal="true"`，Esc/遮罩/关闭按钮取消，busy 时禁用重复提交。
+- 对话框：优先宿主 `ui.Modal`（`open: true` / `title` / `closeLabel` / `onClose` / `footer`，Esc、遮罩、关闭按钮、焦点与层级都由宿主管；`aria-modal` 与 role 由 Modal 提供），busy 时 `onClose` 与两个按钮都被禁用、不会重复提交；宿主没有 `Modal` 导出时回退本插件自绘遮罩（`role="alertdialog"` + 自定义 Esc 监听 + 点击遮罩取消）。
 - 全插件只有这一个归档管理页面：设置页 section 与侧栏固定入口挂载同一个 `ArchiveManagerSurface`，props 相同、内容相同（都包含「在侧栏显示归档管理」开关），只有外层容器不同（设置页内容列 / 主界面 24px 内边距 + 面板内滚动）。空状态、ghost 提示、相对时间保持一致。
 
 ## Host Remote 接口
@@ -336,7 +342,7 @@ dsh-archive-ext/
 
 ### 自动化
 
-1. `node --check index.js && node --check client.js && node --check typert.host.js && node --check lib/core.js && node --check lib/service.js`
+1. `node --check index.js && node --check client.js && node --check lib/core.js && node --check lib/service.js`
 2. `node test/core.test.mjs`（直接运行，避免沙箱下的子进程限制）：
    - deletionTarget、pickWorkspacePath、resolveSessionDirectory、validateDirectory；
    - resolveSessionStorageDirectory（0.2.x 文件 / 0.1.x 目录 / invalid session / header 缺失 / 无 locate 函数 / locate 抛错 / 目录缺失）；
@@ -350,18 +356,23 @@ dsh-archive-ext/
    - 清理 disposer 移除标记与 `<style>`；
    - `querySelectorAll`、label thunk、观察回调抛错时全部被捕获并回退，`apply`/cleanup 不抛；
    - 无 document/body、CSS mask 不受支持时保持默认齿轮。
-4. `node test/verify-client-apply.mjs`：假 ModuleLoader/React/ctx，断言 `$mount`、五条 descriptors、两个 session menu 注册（id/order）、locale 注册、disposer、settings inject 的 remote，两个菜单 inject 提供的打开函数，以及**设置页 section 与侧栏主面板注册渲染同一个页面组件**（同一 surface，仅 `surface` 容器标记不同）。
-5. `node test/verify-typert-manifest.mjs`：Host/Client 五条 invocation 对齐、`open` / `openSessionStorage` 请求 schema、codec 双字段、service key/exportName、patch 包名一致。
-6. 计划同步检查：`PLAN.md` 存在、版本与变更记录完整；交付时列出相对计划的差异。
+4. `node test/verify-client-apply.mjs`：假 ModuleLoader/React/ctx，断言 `$mount`、五条 descriptors、两个 session menu 注册（id/order）、locale 注册、disposer、settings inject 的 remote，两个菜单 inject 提供的打开函数，**设置页 section 与侧栏主面板注册渲染同一个页面组件**（同一 surface，仅 `surface` 容器标记不同），以及 `CLIENT_UI` 解析到的宿主导出（`Switch`/`Button`/`Modal` 必须是桩里的同名组件）与 `createStore` 走宿主 `createSnapshotStore`。
+5. 计划同步检查：`PLAN.md` 存在、版本与变更记录完整；交付时列出相对计划的差异。
+6. 契约自检已合并进第 4 项：Remote 形状由 `lib/service.js` 的 `@Remote` 标记与 Client 端 descriptors 对齐，v1.28 起不再有独立的 TYPERT 清单可校验。
 
 ### 安装验证（需批准）
 
+只允许 npm 包形态（见「已确认的决定」的 link 硬约束）：
+
 ```powershell
-npm install --ignore-scripts
-dsh plugin --profile desktop add E:\path\to\dsh-archive-ext
+npm pack                                  # 产出 ancircle0-dsh-archive-ext-0.1.5.tgz
+# 装 tarball（等价于 npmjs 安装形态，pnpmp 解包成真实目录，不是软链）
+dsh plugin --profile desktop add .\ancircle0-dsh-archive-ext-0.1.5.tgz
+# 或从 registry 安装
+dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.5
 ```
 
-- 安装后只读检查 profile `package.json`、`dsh.profile.bundles`、`node_modules` 链接（desktop profile 由 Electron 独占，CLI `--dump-config` 会拒绝执行）。
+- 安装后只读检查 profile `package.json`、`dsh.profile.bundles`，并确认 `node_modules\@ancircle0\dsh-archive-ext` 是**真实目录**（`LinkType` 为空），不是 `SymbolicLink`。
 - 不自动重启 DSH。
 
 ### 人工验收（重启后）
@@ -405,6 +416,8 @@ dsh plugin --profile desktop add E:\path\to\dsh-archive-ext
 ## 假设与限制
 
 - 工作区行 “…” 菜单在 DSH 0.2.1 **没有**官方 slot（ui-workspace 硬编码 `Menu` items）；v1.18 起**不再注入**工作区菜单，避免随宿主 DOM 升级失效。所有入口使用官方 `sidebar.workspaces.session.menu.item`。
+- Remote 端点解析（v1.28）：本包不提供 `./typert` 严格清单，Gateway 走 SRC 模式——按 `typertRemote.namespace` + 原型 `remote-methods` 标记匹配，参数名即线名（`request`）、codec 为 `src-json`。因此**改方法名/参数名等于改线协议**：`restore(request)` 这类签名必须与 Client descriptors 的 `wire` 保持一致；也不要给方法加非末尾的 `signal` 参数。若将来需要严格线校验（例如 result 形态复杂化），再补 `./typert` 清单。
+- SRC 回退的 `hasSeen` 限制：同一进程内若曾注册过某 endpoint 的严格定义、随后被撤回，Gateway 会拒绝 SRC 回退。从 0.1.5（带清单）升级到 0.1.6（无清单）必须**完全重启 DSH**，热安装可能报 `gateway/definition-unavailable`。
 - 客户端插件激活顺序不保证：本插件未声明 locale 依赖，`ctx.get("locale")` 可能晚于 apply 出现；因此 locale 必须懒解析/重试，不能缓存 `null`。
 - 会话日志目录由 `sessionPersistence.locate(header)` + `deletionTarget()` 推导：0.2.x 返回日志文件（取其目录），0.1.x 返回会话目录；两者都按目录校验。
 - 刚创建、尚未持久化的会话可能没有日志目录：点击「打开会话文件夹」会得到 `session-log-missing` 提示，这是预期行为。
@@ -414,6 +427,8 @@ dsh plugin --profile desktop add E:\path\to\dsh-archive-ext
 - 增强只观察 `document.body` 的 childList/characterData，只按本插件本地化 label 匹配 `[role="dialog"] nav button`，不读取/修改其他插件的节点内容。
 - 侧栏固定开关保存在浏览器 `localStorage`（key `dsh-archive-ext.sidebar`），跨重启保留；不跨浏览器同步。
 - 归档管理只有**一个页面**：设置页 section 与可选侧栏入口挂载同一个页面组件与同一份内容（都含「在侧栏显示归档管理」开关）；侧栏入口使用 layout `main` 面板（不再是独立固定模态框）。
+- 宿主 Client 组件（`Switch` / `Button` / `Modal` / `MenuItemButton`）与宿主 store 模块的导出都按 `hostPrimitive()` / 可选 `require` 解析，缺失即回退本地实现；`CLIENT_UI` 导出让测试能断言“取到的是宿主那份”，避免静默降级。宿主 `Button` 目前只有 `primary` / `outline` / `ghost` 变体，没有 danger，删除类操作靠本地色类 `ae-action-danger` 体现危险语义。
+- 宿主 `Modal` 负责 Escape、遮罩点击、焦点与层叠；插件只在回退路径上自己监听 Escape。若宿主将来把 `Modal` 的 `footer` / `closeLabel` 等 props 改名，对话框会退化为本地自绘壳（`CLIENT_UI.HostModal` 为 null 时）。
 - DSH 0.2.1 没有「打开设置面板并选中某个 section」的插件 API（设置面板 open/activeId 只存在 ui-settings-general 内部 store；`settings.section` 只收到 `close`；`settings.launcher` 是单槽且被账号菜单占用），因此侧栏入口不能跳进设置面板，也不需要为此新增 DOM 注入。
 - 包名属于用户自有 scope；改 scope 需同步修改所有标识并更新本文件。
 - 当前环境无法进行浏览器 DOM/截图验证；可见 UI 由用户重启后验收。

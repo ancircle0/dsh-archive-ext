@@ -73,10 +73,32 @@ const primitives = {
   MenuItemButton: function MenuItemButton() {},
   Tooltip: function Tooltip() {},
   IconTrashOutlineRegular: function IconTrashOutlineRegular() {},
+  Switch: function Switch() {},
+  Button: function Button() {},
+  Modal: function Modal() {},
+};
+const storeModule = {
+  createSnapshotStore(initial) {
+    let value = initial;
+    const listeners = new Set();
+    return {
+      getSnapshot: () => value,
+      set: (next) => {
+        if (Object.is(value, next)) return;
+        value = next;
+        for (const listener of [...listeners]) listener();
+      },
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+  },
 };
 const requireFake = (id) => {
   if (id === "react") return React;
   if (id === "@deepseek-ai/dsh-client-ui-primitives") return primitives;
+  if (id === "@deepseek-ai/dsh-client-store") return storeModule;
   throw new Error("unexpected require: " + id);
 };
 
@@ -231,7 +253,20 @@ assert.equal(typeof settingsInjected.setSidebarEnabled, "function");
 assert.ok(settingsInjected.sidebarEnabledStore);
 assert.ok(settingsInjected.sidebarSupportedStore);
 assert.ok(settingsInjected.ghostStore);
-assert.equal(settingsInjected.sidebarSupportedStore.get(), true);
+assert.equal(settingsInjected.sidebarSupportedStore.getSnapshot(), true);
+
+// Host primitives and the host store module replace the local copies.
+const clientUi = module.CLIENT_UI;
+assert.ok(clientUi, "client bundle must expose CLIENT_UI");
+assert.equal(clientUi.HostSwitch, primitives.Switch);
+assert.equal(clientUi.HostButton, primitives.Button);
+assert.equal(clientUi.HostModal, primitives.Modal);
+const hostStore = clientUi.createStore([]);
+assert.equal(typeof hostStore.getSnapshot, "function");
+assert.equal(typeof hostStore.subscribe, "function");
+assert.equal(typeof hostStore.set, "function");
+hostStore.set(["a"]);
+assert.deepEqual(hostStore.getSnapshot(), ["a"]);
 
 assert.equal(localeRegistrations.length, 1);
 assert.equal(localeRegistrations[0].namespace, "archiveExt");
@@ -241,7 +276,7 @@ assert.ok(localeRegistrations[0].dictionaries.en["settings.pin"]);
 // Toggle the optional sidebar panel on: main + sidebar.panellist appear.
 settingsInjected.setSidebarEnabled(true);
 assert.equal(storage.get("dsh-archive-ext.sidebar"), "true");
-assert.equal(settingsInjected.sidebarEnabledStore.get(), true);
+assert.equal(settingsInjected.sidebarEnabledStore.getSnapshot(), true);
 const main = registrations.find((entry) => entry.options.name === "main");
 const row = registrations.find(
   (entry) => entry.options.name === "sidebar.panellist" && entry.options.id === "archive-ext",

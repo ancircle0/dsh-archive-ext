@@ -55,19 +55,22 @@ dsh plugin --profile desktop add @ancircle0/dsh-archive-ext
 需要固定版本时：
 
 ```bash
-dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.4
+dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.5
 ```
 
-本地开发可直接使用仓库目录：
+本地开发（从仓库打包后安装，等价于 npm 安装形态）：
 
 ```bash
-dsh plugin --profile desktop add /path/to/dsh-archive-ext
+npm pack                                                  # 生成 ancircle0-dsh-archive-ext-0.1.5.tgz
+dsh plugin --profile desktop add .\ancircle0-dsh-archive-ext-0.1.5.tgz
 ```
 
-Windows 示例：
+> **不要用目录 / 软链（`link:`）安装仓库目录。** 那样插件会被放在 profile 之外，宿主只按插件自身的 `node_modules` 解析模块，`@deepseek-ai/*` 宿主包会找不到（`ERR_MODULE_NOT_FOUND`），整个插件不会激活。安装必须以 npm 包形态（registry 包或上面的 tarball）进行。
 
-```bash
-dsh plugin --profile desktop add C:\path\to\dsh-archive-ext
+Windows 下 tarball 路径示例：
+
+```powershell
+dsh plugin --profile desktop add E:\build\ancircle0-dsh-archive-ext-0.1.5.tgz
 ```
 
 安装或更新后，请**完全退出并重新启动 DSH**。仅刷新页面不会重新加载 Host 插件代码。
