@@ -37,6 +37,7 @@
 | v1.27 | 2026-10-28 | 立**禁止 link 安装**的硬约束：插件只能以 npm 包形态安装（registry 包或 `npm pack` 产出的 tarball），不得用 `link:` / 目录软链。原因：`dsh-app-boot` 解析层对 profiles 树内的包走 profile 映射（宿主包名由运行时表解析），对链接到外部目录的包走 `routeLinked`（只解析链接目标自己的 `node_modules`），实测 link 安装下 `import "@deepseek-ai/dsh-typert-protocol"` 直接 `ERR_MODULE_NOT_FOUND`。同时把 `@deepseek-ai/dsh-client-ui-primitives` 加入 `peerDependencies`（Client 半用它取宿主 `Switch` / `MenuItemButton`，取不到时回退自带控件）。版本号升到 `0.1.5` | 安装形态与 npmjs 真实形态一致，宿主包 import 走官方 peer-aware 解析；`dsh-client-ui-primitives` 属 `@deepseek-ai/dsh-*`，参与 DSH 版本闸门 |
 | v1.28 | 2026-10-28 | **删除手写的 `typert.host.js`**，改用宿主 Gateway 的 SRC 模式：`dsh-typert-loader` 文档写明「Packages without the export are skipped silently」，`dsh-api-gateway` 的 `resolveDescriptor()` 在注册表没有该 endpoint 的严格定义时回落 `resolveSrcDescriptor()`——按服务的 `typertRemote` 绑定 + 原型 `remote-methods` 标记解析，参数名即线名（`request`）。因此 `TypertRemoteService` + `@Remote()` 已经足够，`./typert` 清单、`zod` 依赖、`test/verify-typert-manifest.mjs` 全部移除。版本号升到 `0.1.6` | 少约 340 行手写协议描述和一个运行时依赖（`dependencies` 变为空）；代价是失去严格线校验，参数/结果按 JSON pass-through（与 Client 的 passthrough codec 一致） |
 | v1.29 | 2026-10-28 | 停用三处自造实现，改用宿主组件/模块：①删除确认框改宿主 `ui.Modal`（`open/title/closeLabel/onClose/className/footer`，Escape/遮罩/焦点/层级由宿主管）；②行内动作与对话框按钮改宿主 `ui.Button`（`variant: ghost/outline`；宿主无 danger 变体，危险色用 `--dsw-alias-state-error-primary` 的本地类）；③`ghostIds`/`notice`/侧栏开关 4 个 store 改宿主 `@deepseek-ai/dsh-client-store` 的 `createSnapshotStore` + `React.useSyncExternalStore`。三者都保留本地回退（宿主缺导出时用旧实现，测试用桩覆盖）。版本号升到 `0.1.7` | 与宿主外观/行为同源，去掉自绘遮罩与两套按钮样式；`CLIENT_UI` 导出让“宿主导出没取到”在测试中可见 |
+| v1.30 | 2026-10-28 | 记录自造实现审计的最终取舍（详见「方案演进与未采用方案 §5」）：**放弃**把 4 个手绘 SVG 换成宿主图标（手绘已符合要求，换取宿主图标会把外观绑死在宿主导出名上），**放弃**把 `settings.section` 的 id 改成宿主内置图标表里的 `archived-sessions`（不占用官方 id 单元格），因此设置页导航图标继续用可失败的 CSS mask 增强。无代码改动 | 图标与导航增强的现状成为明确决定，不再被后续审计重复提出 |
 
 ## 目标
 
@@ -135,6 +136,21 @@
 ### 4. 仍然保留的 DOM 增强
 
 - 设置页导航图标：DSH `settings.section` 没有 icon 字段，只能标记本插件自己的导航行并注入 CSS mask；与菜单入口独立，全程异常捕获并回退默认齿轮。它不承担菜单/路由功能，失败只影响图标。
+- v1.30 曾评估用「把 section id 改成 `archived-sessions`」来免费吃下宿主内置的图标表（`ui-settings-general` 的 `navIcon(id)` 对该 id 直接返回 `IconArchiveOutlineMedium`），从而删掉整段增强；**决定不采用**：那会占用官方 id 单元格，将来官方若出同名 section 会互相替换。增强继续保留。
+
+### 5. 自造实现审计的取舍（v1.29 采纳 / v1.30 放弃）
+
+审计结论：三处换成宿主实现（已做），两处**明确放弃**，其余几处看似自造、但宿主没有对应 API（或按规范不能引用）。
+
+| 审计项 | 结论 | 理由 |
+|---|---|---|
+| 删除确认框 → 宿主 `ui.Modal` | 采纳（v1.29） | 我们自己写遮罩/Esc/焦点/层级，属于重复实现 |
+| 行内与对话框按钮 → 宿主 `ui.Button` | 采纳（v1.29） | 两套自绘按钮样式；宿主唯一的缺口是没有 danger 变体，用本地色类补 |
+| 4 个 store → 宿主 `@deepseek-ai/dsh-client-store` | 采纳（v1.29） | 20 行重复实现宿主已有的 `createSnapshotStore` |
+| 4 个手绘 SVG → 宿主 `IconArchiveOutlineMedium` / `IconFolderOpenRegular` / `IconChevronRightOutlineRegular` | **放弃（v1.30）** | 手绘图标已符合要求（尺寸/线宽/明暗主题与宿主一致），换宿主图标收益仅“少 4 个函数”，却把外观绑死在宿主导出名上（改名即退化成缺图标） |
+| 设置页导航图标改 id `archived-sessions` | **放弃（v1.30）** | 会占用官方 id 单元格，与未来官方 section 冲突；宁可保留可失败的窄范围 DOM 增强 |
+| `typert.host.js` 手写清单 | 已删除（v1.28） | 官方 loader 允许缺省、Gateway 走 SRC 模式 |
+| 删会话日志 / 打开资源管理器 / 自绘 toast | 保留 | 宿主无对应 API（`sessionPersistence` 与 `fs` 都没有删除；无“用文件管理器打开”；`workspace.toast` 是固定 key 枚举） |
 
 ## 计划同步规则
 
