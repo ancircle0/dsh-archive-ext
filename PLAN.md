@@ -39,13 +39,14 @@
 | v1.29 | 2026-10-28 | 停用三处自造实现，改用宿主组件/模块：①删除确认框改宿主 `ui.Modal`（`open/title/closeLabel/onClose/className/footer`，Escape/遮罩/焦点/层级由宿主管）；②行内动作与对话框按钮改宿主 `ui.Button`（`variant: ghost/outline`；宿主无 danger 变体，危险色用 `--dsw-alias-state-error-primary` 的本地类）；③`ghostIds`/`notice`/侧栏开关 4 个 store 改宿主 `@deepseek-ai/dsh-client-store` 的 `createSnapshotStore` + `React.useSyncExternalStore`。三者都保留本地回退（宿主缺导出时用旧实现，测试用桩覆盖）。版本号升到 `0.1.7` | 与宿主外观/行为同源，去掉自绘遮罩与两套按钮样式；`CLIENT_UI` 导出让“宿主导出没取到”在测试中可见 |
 | v1.30 | 2026-10-28 | 记录自造实现审计的最终取舍（详见「方案演进与未采用方案 §5」）：**放弃**把 4 个手绘 SVG 换成宿主图标（手绘已符合要求，换取宿主图标会把外观绑死在宿主导出名上），**放弃**把 `settings.section` 的 id 改成宿主内置图标表里的 `archived-sessions`（不占用官方 id 单元格），因此设置页导航图标继续用可失败的 CSS mask 增强。无代码改动 | 图标与导航增强的现状成为明确决定，不再被后续审计重复提出 |
 | v1.31 | 2026-11-05 | DSH 升到 0.2.2-rc.1 后设置页导航行变成 `button > span.navIcon > ⟨slot⟩`，我们那段「隐藏宿主图标」的 `> svg` 直接子选择器失效 → 出现“自绘图标 + 齿轮”并排。新版提供了官方插槽 `settings.section.icon`（list、root，按 section id 匹配，owner props `{ size, active }`，未注册时 shell 用内置图标表/齿轮），因此**整段 DOM 增强删除**（`NAV_ICON_*`、`isOwnNavRow`、`navIconMaskSvg/Url/Css`、`supportsMaskImage`、`installSettingsNavIcon`、`CLIENT_NAV_ICON`、`test/nav-icon.test.mjs`），改为注册该插槽并渲染同一个 `IconArchive`。版本号升到 `0.1.8` | 少约 200 行 DOM/样式注入与一个观察器；图标走宿主同一条渲染路径（`currentColor` 自动跟随选中/hover/主题）；代价是 `settings.section.icon` 只在 0.2.2+ 存在，旧版回退齿轮但插件其余功能正常 |
+| v1.32 | 2026-11-05 | 移除「打开工作区文件夹」会话菜单项：DSH 0.2.2 起自带该能力（`dsh-client-ui-open-in-app` 在会话上下文菜单注册“在文件管理器中显示”，order 500，位于 Copy session ID 与 Archive 之间；会话头部另有 Open In 分体按钮），插件再提供即为重复入口。同步删除 Client 的条目/图标/描述符与 Host 的 `open` Remote 方法、core 的 `resolveSessionDirectory` / `pickWorkspacePath` / `validateDirectory` / `openInExplorer`、错误码 `path-missing` / `path-not-directory` 及对应测试。**「打开会话文件夹」保留**。版本号升到 `0.1.9` | 会话菜单不再重复；Remote 方法 5 → 4，core 少 4 个只为该功能存在的导出；README/预览图与 `files` 同步（`screenshot/*.png` 进包，删掉已失效的旧截图） |
 
 
 ## 目标
 
 在当前工作区从零创建一个独立 DSH 插件：
 
-1. 在**会话行 “…” 菜单**（官方 `sidebar.workspaces.session.menu.item`）增加两个入口：①「打开工作区文件夹」打开当前会话所属工作区目录；②「打开会话文件夹」打开该会话日志所在目录。菜单入口不使用 DOM 注入，也不依赖工作区行菜单结构；设置页图标增强是独立的可失败增强。
+1. 在**会话行 “…” 菜单**（官方 `sidebar.workspaces.session.menu.item`）提供一个入口「打开会话文件夹」，打开该会话日志所在目录。（「打开工作区文件夹」自 v1.32 起交给 DSH 自带能力，插件不再提供。）菜单入口不使用 DOM 注入，也不依赖工作区行菜单结构；设置页导航图标走官方 `settings.section.icon` 插槽。
 2. 在**设置页**增加「归档管理」section，按工作区分组列出已归档会话，支持搜索、取消归档、永久删除；永久删除有二次确认。
 3. 设置页内提供「在侧栏显示归档管理」开关；开启后通过官方侧栏全局面板 API 固定一个可点击入口，位置参考第三方插件市场的侧栏入口。该入口打开的就是**同一个**归档管理页面（含「在侧栏显示归档管理」开关），全插件只有一个归档管理页面。
 
@@ -53,7 +54,7 @@
 
 ## 成功标准
 
-- 插件以标准 bundle 安装进 `desktop` profile；DSH 重启后会话 “…” 菜单的两个入口都出现且可用。
+- 插件以标准 bundle 安装进 `desktop` profile；DSH 重启后会话 “…” 菜单出现「打开会话文件夹」且可用，且**不再**出现插件自带的「打开工作区文件夹」（该功能由 DSH 自带）。
 - 不修改、不依赖其他第三方插件。
 - 永久删除只删除目标会话的日志目录与归档记录；运行中的智能体会被拒绝；删除失败有可读错误。
 - 静态检查、单元测试、client apply 冒烟测试全部通过。
@@ -62,14 +63,13 @@
 
 ## 已确认的决定
 
-- 新建独立插件，包名 `@ancircle0/dsh-archive-ext`，版本 `0.1.8`，公开 npm 包（`publishConfig.access = "public"`）。
+- 新建独立插件，包名 `@ancircle0/dsh-archive-ext`，版本 `0.1.9`，公开 npm 包（`publishConfig.access = "public"`）。
 - **放弃工作区行菜单的 DOM 注入**（v1.15–v1.17 的 `installWorkspaceMenuAction` / 归属识别 / 回退状态全部移除）：DSH 没有工作区菜单 slot，注入随宿主 DOM 变化易失效。菜单入口全部改用官方 `sidebar.workspaces.session.menu.item`。
-- 会话 “…” 菜单新增两个条目（均为官方 slot 条目，使用 `MenuItemButton`）：
-  - `archive-ext.open-workspace-folder`，order 430，label「打开工作区文件夹」，图标文件夹；调用 `open({ sessionId })`，由 Host 解析该会话所属工作区目录（工作区路径优先，回退 live/persisted `cwd`）。
-  - `archive-ext.open-session-folder`，order 440，label「打开会话文件夹」，图标归档；调用新增 `openSessionStorage({ sessionId })`，打开会话日志所在目录。
-- Host `open` 请求恢复为仅 `{ sessionId }`；移除 workspaceId 分支、`resolveWorkspaceDirectory`、错误码 `invalid-workspace` / `workspace-missing`。
+- 会话 “…” 菜单提供一个条目（官方 slot 条目，使用 `MenuItemButton`）：
+  - `archive-ext.open-session-folder`，order 440，label「打开会话文件夹」，图标归档；调用 `openSessionStorage({ sessionId })`，打开会话日志所在目录。
+- **v1.32 移除 `archive-ext.open-workspace-folder`（order 430）与 Host 的 `open` 方法**：DSH 0.2.2 自带该能力（`dsh-client-ui-open-in-app` 在会话上下文菜单注册“在文件管理器中显示工作区目录”，order 500，并在会话头部提供 Open In 分体按钮），插件再提供即重复入口。
 - 新增 Host Remote 方法 `openSessionStorage({ sessionId })`：`findHeader` → `sessionPersistence.locate(header)` → `deletionTarget(location.path)` 归一为会话目录 → 目录校验 → Explorer；错误码 `invalid-session`（空/非法 id）、`session-missing`（找不到 header）、`session-locate-unavailable`（构建无法定位日志）、`session-log-missing`（日志路径为空、目录不存在或不是目录）、`launch-failed`。日志不存在时只提示，不回退打开工作区目录。
-- 两个会话菜单条目始终显示，不依赖工作区菜单增强状态；保留设置页 section、侧栏固定入口与设置页导航图标插槽。
+- 该会话菜单条目始终显示，不依赖其他状态；保留设置页 section、侧栏固定入口与设置页导航图标插槽。
 - 归档管理入口从 footer 迁移到**设置页 section**：注册 `settings.section`（id `archive-ext`，order 50，label「归档管理」）。设置页导航图标自 v1.31 起用官方插槽 `settings.section.icon`（注册 id 必须与 section id 一致），渲染与侧栏行相同的 `IconArchive`；不再有任何 DOM 注入。
 - 可选侧栏固定入口使用官方 `sidebar.panellist`（列表行）+ `main`（keyed 面板内容）+ `layout.selectPanel(id)`；开关状态保存在浏览器 `localStorage`，开启后侧栏出现归档管理行，点击在主界面渲染**与设置页完全相同的归档管理页面**（同一个 `ArchiveManagerSurface`，同样包含「在侧栏显示归档管理」开关），关闭时若当前面板是归档管理则 `selectPanel(null)`。
 - **只有一个归档管理页面**（v1.26）：两个入口（设置页 section、侧栏固定入口）挂载同一个页面组件与同一份内容，不再存在“侧栏面板版没有开关”的第二个页面变体。DSH 没有“打开设置页并定位到某个 section”的插件 API（设置面板的开关/选中态只存在 ui-settings-general 内部 store；`settings.section` 只拿到 `close`；`settings.launcher` 是单槽且已被账号菜单占用），因此不采用“侧栏入口去驱动设置面板”的做法，也不为此新增 DOM 注入。
@@ -101,32 +101,27 @@
   4. 升级后可能出现“注入项消失、回退项也没出现”的双故障。
 - 结论：v1.18 删除 `installWorkspaceMenuAction`、归属识别、回退状态、`workspaceId` 分支、`resolveWorkspaceDirectory`、`invalid-workspace` / `workspace-missing` 及 `test/workspace-menu.test.mjs`。
 
-### 2. 当前方案：官方会话菜单承载两个入口（v1.18–当前）
+### 2. 当前方案：官方会话菜单承载「打开会话文件夹」（v1.18–当前）
 
-- 工作区行无法安全添加，但「打开工作区文件夹」仍是需要的功能，因此把两个动作都放到官方 `sidebar.workspaces.session.menu.item`：
-  - `archive-ext.open-workspace-folder`（order 430，文件夹图标）→ `open({ sessionId })`；Host 先按工作区成员关系找路径，再回退 live/persisted `cwd`。这就是“在会话上打开工作区文件夹”的取舍：位置不如工作区行自然，但不依赖 DOM。
+- 工作区行没有官方菜单插槽，所以两个动作一度都放在官方 `sidebar.workspaces.session.menu.item`。
+- v1.32 起只保留一个条目（DSH 0.2.2 自带打开工作区目录的能力后，重复的那个被删除）：
   - `archive-ext.open-session-folder`（order 440，归档图标）→ `openSessionStorage({ sessionId })`；定位会话日志目录。
 - 稳定性来自官方 slot 的 owner props（`sessionId` / `displayTitle`）与 Typert Remote 契约，不依赖菜单 DOM；DSH 改菜单样式或文案不影响入口。
-- 两个条目使用 `MenuItemButton`（缺失时回退 `button role="menuitem"`）；order 位于内置 `archive`(400) 与 `session-id`(450) 之间；不使用 `separatorBefore`，避免依赖宿主分组样式。
+- 条目使用 `MenuItemButton`（缺失时回退 `button role="menuitem"`）；order 位于内置 `archive`(400) 与 `session-id`(450) 之间；不使用 `separatorBefore`，避免依赖宿主分组样式。
 - 点击时先通过 `useMenuOpenState` 关闭菜单，再调用 Remote；失败写 notice，不静默。
 - 日志目录缺失只提示 `session-log-missing`，不回退打开工作区目录，避免打开错误位置。
-- 未来若 DSH 提供工作区文件夹行 “…” 菜单的官方插槽，应优先把「打开工作区文件夹」迁回工作区行；当前不保留注入代码或 feature flag，避免死代码和双入口状态。
+- 已知边界：`sidebar.workspaces.session.menu.item` 在 0.2.2 被官方标注为 “Legacy external Session menu rows”（新口径是 `ctx.contextMenus`），当前仍可用；若将来移除，需要迁移到 contextMenus 贡献。
 
 调用链：
 
 ```text
-会话菜单项
-├─ 打开工作区文件夹 → remote.open({ sessionId })
-│    → resolveSessionDirectory：workspace.sessionIds → path
-│      否则 live session.header.cwd
-│      否则持久化 header.cwd
-│    → validateDirectory（绝对路径 / 存在 / 是目录）
-│    → launchResolvedDirectory → explorer/open/xdg-open
-└─ 打开会话文件夹 → remote.openSessionStorage({ sessionId })
-     → findHeader → sessionPersistence.locate(header)
-     → deletionTarget(location.path)（0.2.x 取日志文件父目录；0.1.x 已是目录）
-     → stat 校验目录 → launchResolvedDirectory
+会话菜单项「打开会话文件夹」→ remote.openSessionStorage({ sessionId })
+  → findHeader → sessionPersistence.locate(header)
+  → deletionTarget(location.path)（0.2.x 取日志文件父目录；0.1.x 已是目录）
+  → stat 校验目录 → launchResolvedDirectory → explorer/open/xdg-open
 ```
+
+对照：打开工作区目录在 0.2.2+ 由 DSH 自带（`dsh-client-ui-open-in-app`：会话上下文菜单 order 500 + 会话头部 Open In 分体按钮），插件不再实现。
 
 ### 3. 检查过但未采用的做法
 
@@ -187,6 +182,7 @@ dsh-archive-ext/
 ├── locale/en.json           # 插件元数据（英文）
 ├── locale/zh.json           # 插件元数据（中文）
 ├── icon.svg
+├── screenshot/preview-archve-manager.png   # README 预览图（已进包）
 ├── test/core.test.mjs
 ├── test/verify-client-apply.mjs    # client apply 冒烟/契约
 ├── README.md                # 面向使用者的介绍/安装/使用文档
@@ -198,11 +194,11 @@ dsh-archive-ext/
 
 ### package.json
 
-- `name: "@ancircle0/dsh-archive-ext"`，`version: "0.1.8"`，`type: "module"`；无 `private`，`publishConfig.access = "public"`。
+- `name: "@ancircle0/dsh-archive-ext"`，`version: "0.1.9"`，`type: "module"`；无 `private`，`publishConfig.access = "public"`。
 - 发布元数据：`author`、`repository`、`homepage`、`bugs`、`keywords` 指向 `github.com/ancircle0/dsh-archive-ext`。
 - `main: "index.js"`。
 - `exports`：`.`、`./client`、`./cordis.patch.yml`、`./package.json`、`./locale/*.json`、`./icon`（**没有 `./typert`**：v1.28 起不用手写清单，Gateway 走 SRC 模式）。
-- `files`：`index.js`、`client.js`、`cordis.patch.yml`、`lib/*.js`、`locale/*.json`、`icon.svg`、`PLAN.md`、`README.md`、`LICENSE`。
+- `files`：`index.js`、`client.js`、`cordis.patch.yml`、`lib/*.js`、`locale/*.json`、`icon.svg`、`screenshot/*.png`、`PLAN.md`、`README.md`、`LICENSE`。
 - `dsh`：
   ```json
   { "bundle": { "patch": "./cordis.patch.yml" }, "client": { "platform": "web" } }
@@ -218,7 +214,7 @@ dsh-archive-ext/
 
 ### 发布
 
-- 版本号与 Git tag 对齐（当前 `0.1.8` / `v0.1.8`）；`npm publish --access public`，`publishConfig` 已声明 public。
+- 版本号与 Git tag 对齐（当前 `0.1.9` / `v0.1.9`）；`npm publish --access public`，`publishConfig` 已声明 public。
 - README 安装命令以 npm 包名为主；本地开发用 `npm pack` 出的 tarball 安装（**不用目录/link**，见 v1.27 硬约束）。
 - DSH 插件管理没有自动升级操作；升级需要卸载旧版本后再安装新版本。
 
@@ -243,9 +239,6 @@ dsh-archive-ext/
 - `writeArchived(services, next)`：读取完整 workspace state，`workspaceRegistry.setState({ ...state, archivedSessionIds: next })`。
 - `removeArchivedSession(services, sessionId)`：优先 `workspaceRegistry.unarchiveSession(sessionId)`（走注册表串行写入口），旧构建回退为 `readArchived` + `writeArchived` 全量写。
 - `findHeader(services, sessionId)`：先 `sessionQuery.listSessions()`，再 `sessionPersistence.list()`。
-- `pickWorkspacePath(workspaces, sessionId)`：查找 `sessionIds` 包含目标会话的工作区，返回其 `path`。
-- `resolveSessionDirectory(services, sessionId)`：工作区路径优先；否则 live session 的 `header.cwd`；再否则持久化 header 的 `cwd`；最后经 `validateDirectory` 校验绝对路径、存在且为目录；空/非法 id 返回 `invalid-session`，路径不可用返回 `path-missing`，非目录返回 `path-not-directory`。
-- `validateDirectory(path, deps)`：供 `resolveSessionDirectory` 使用的绝对路径 + 存在 + 目录校验；会话日志目录在 `resolveSessionStorageDirectory` 内单独校验，以便把失败统一映射为 `session-log-missing`。
 - `resolveSessionStorageDirectory(services, sessionId, deps)`：校验 sessionId → `findHeader`（找不到返回 `session-missing`）→ `sessionPersistence.locate(header)`（缺失/抛错返回 `session-locate-unavailable`）→ `deletionTarget(location.path)` 归一为会话日志目录 → 校验目录（路径为空、不存在或不是目录返回 `session-log-missing`）。
 - `deletionTarget(locatedPath)`：兼容 0.1.x（目录）与 0.2.x（日志文件）；文件取 `dirname`，已不存在时按扩展名判断。
 - `restoreArchivedSession({ sessionId, services })`：校验、检查归档成员、写回、返回结果或 `invalid-session` / `not-archived` / `write-failed`。
@@ -258,7 +251,6 @@ dsh-archive-ext/
   - 返回 `invalid-session` / `not-archived` / `agent-running` / `locate-unavailable` / `delete-failed` / `archive-cleanup-failed`。
 - `ghostSessionIds({ services, existsSync })`：live session 且日志目录不存在 → ghost。
 - `buildOpenCommand(platform, path)`：win32 → `explorer.exe`；darwin → `open`；其他桌面 → `xdg-open`。
-- `openInExplorer({ sessionId, services, platform, execFile })`：Host 侧解析会话所属工作区目录并校验；`execFile` 启动，Windows 退出码 1 视为成功；失败返回 `invalid-session` / `path-missing` / `path-not-directory` / `launch-failed`。
 - `openSessionStorageInExplorer({ sessionId, services, platform, execFile })`：解析会话日志目录并通过同一 Explorer 启动逻辑打开；失败返回 `invalid-session` / `session-missing` / `session-locate-unavailable` / `session-log-missing` / `launch-failed`。
 
 ### lib/service.js
@@ -300,13 +292,13 @@ dsh-archive-ext/
 - `ghostIds`、`notice`、侧栏开关（enabled/supported）共 4 个快照 store：优先 `require("@deepseek-ai/dsh-client-store").createSnapshotStore(initial)`（宿主 Settings shell / Plugin Manager 同款），用 `React.useSyncExternalStore(store.subscribe, store.getSnapshot)` 订阅；宿主没有该模块时回退到本插件 20 行的等价实现（`fallbackSnapshotStore`）。notice 自动 4 秒消失。
 - 删除确认状态改为每个归档管理 surface 的局部 state，避免设置页与侧栏面板同时挂载时出现两个确认框。
 
-### 会话行菜单项（官方 slot，两个入口）
+### 会话行菜单项（官方 slot，一个入口）
 
-- 使用官方 `sidebar.workspaces.session.menu.item` 注册两个条目，均通过 `ui.MenuItemButton`（缺失时回退 `button role="menuitem"`），点击后先用 `useMenuOpenState` 关闭菜单：
-  - `archive-ext.open-workspace-folder`，order 430，「打开工作区文件夹」：调用 `remote.open({ sessionId })`，打开该会话所属工作区目录；失败写 notice。
+- 使用官方 `sidebar.workspaces.session.menu.item` 注册一个条目，通过 `ui.MenuItemButton`（缺失时回退 `button role="menuitem"`），点击后先用 `useMenuOpenState` 关闭菜单：
   - `archive-ext.open-session-folder`，order 440，「打开会话文件夹」：调用 `remote.openSessionStorage({ sessionId })`，打开该会话日志目录；失败写 notice。
-- 两个条目始终显示，与设置页/侧栏状态无关；不再有工作区菜单 DOM 注入、归属判断或回退状态。
-- 图标：工作区文件夹用文件夹图标，会话存储用归档图标。
+- v1.32 移除 `archive-ext.open-workspace-folder`（order 430）与 `remote.open`：DSH 0.2.2 自带“在文件管理器中显示工作区目录”。测试里显式断言该条目与 `open` 方法都不再存在，防止回归。
+- 该条目始终显示，与设置页/侧栏状态无关；不再有工作区菜单 DOM 注入、归属判断或回退状态。
+- 图标：会话存储用归档图标（`IconArchive`）。
 - 不使用 `MenuItemButton` 的 `separatorBefore` 以免依赖宿主分组样式；order 保证位于内置 `archive`(400) 与 `session-id`(450) 之间。
 
 ### 设置页 section
@@ -348,14 +340,13 @@ dsh-archive-ext/
 | `restore` | `{ sessionId }` | `{ restored: true }` |
 | `delete` | `{ sessionId }` | `{ fileRemoved: boolean, live: boolean, liveDetached: boolean }` |
 | `state` | 无 | `{ ghostIds: string[] }` |
-| `open` | `{ sessionId }` | `{ path: string }` |
 | `openSessionStorage` | `{ sessionId }` | `{ path: string }` |
 
 失败统一为 `{ ok: false, error: { code, message? } }`。
 
 ### 错误码
 
-`invalid-session`、`session-missing`、`session-locate-unavailable`、`session-log-missing`、`not-archived`、`agent-running`、`locate-unavailable`、`delete-failed`、`archive-cleanup-failed`、`write-failed`、`path-missing`、`path-not-directory`、`launch-failed`、`state-failed`。
+`invalid-session`、`session-missing`、`session-locate-unavailable`、`session-log-missing`、`not-archived`、`agent-running`、`locate-unavailable`、`delete-failed`、`archive-cleanup-failed`、`write-failed`、`launch-failed`、`state-failed`。
 
 ## 测试与验证
 
@@ -363,12 +354,12 @@ dsh-archive-ext/
 
 1. `node --check index.js && node --check client.js && node --check lib/core.js && node --check lib/service.js`
 2. `node test/core.test.mjs`（直接运行，避免沙箱下的子进程限制）：
-   - deletionTarget、pickWorkspacePath、resolveSessionDirectory、validateDirectory；
+   - deletionTarget；
    - resolveSessionStorageDirectory（0.2.x 文件 / 0.1.x 目录 / invalid session / header 缺失 / 无 locate 函数 / locate 抛错 / 目录缺失）；
-   - open / openSessionStorage 命令与 Windows 退出码 1；
+   - buildOpenCommand / openSessionStorage 命令与 Windows 退出码 1；
    - restore、delete（运行中/非 live/live/无 header/失败）；
    - ghost 检测。
-3. `node test/verify-client-apply.mjs`：假 ModuleLoader/React/ctx，断言 `$mount`、五条 descriptors、两个 session menu 注册（id/order）、locale 注册、disposer、settings inject 的 remote，两个菜单 inject 提供的打开函数，**设置页 section 与侧栏主面板注册渲染同一个页面组件**（同一 surface，仅 `surface` 容器标记不同）、`settings.section.icon` 注册的 id 与 section id 一致，以及 `CLIENT_UI` 解析到的宿主导出（`Switch`/`Button`/`Modal` 必须是桩里的同名组件）与 `createStore` 走宿主 `createSnapshotStore`；并断言 `CLIENT_NAV_ICON` 已不存在（DOM 增强彻底删除）。
+3. `node test/verify-client-apply.mjs`：假 ModuleLoader/React/ctx，断言 `$mount`、**四条** descriptors、一个 session menu 注册（id/order）、locale 注册、disposer、settings inject 的 remote、菜单 inject 提供的打开函数，**设置页 section 与侧栏主面板注册渲染同一个页面组件**（同一 surface，仅 `surface` 容器标记不同）、`settings.section.icon` 注册的 id 与 section id 一致，以及 `CLIENT_UI` 解析到的宿主导出（`Switch`/`Button`/`Modal` 必须是桩里的同名组件）与 `createStore` 走宿主 `createSnapshotStore`；并断言 `CLIENT_NAV_ICON` 与 `open-workspace-folder`/`open` 都不存在（v1.31/v1.32 的删除不回归）。
 4. 计划同步检查：`PLAN.md` 存在、版本与变更记录完整；交付时列出相对计划的差异。
 5. 契约自检已合并进第 3 项：Remote 形状由 `lib/service.js` 的 `@Remote` 标记与 Client 端 descriptors 对齐，v1.28 起不再有独立的 TYPERT 清单可校验。
 
@@ -389,7 +380,7 @@ dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.5
 
 ### 人工验收（重启后）
 
-1. 会话行 “…” 菜单出现「打开工作区文件夹」，点击打开该会话所属工作区目录，菜单正常收起。
+1. 会话行 “…” 菜单**只**出现插件自带的「打开会话文件夹」一项；「打开工作区文件夹」不再由插件提供（改用 DSH 自带的“在文件管理器中显示”，order 500 / 会话头部 Open In 分体按钮）。
 2. 会话行 “…” 菜单出现「打开会话文件夹」，点击打开该会话日志目录（不是工作区目录）。
 3. 新建/未持久化会话点击会话文件夹项时给出「会话日志尚未生成或已被删除」提示，不误开其他目录。
 4. 设置页导航出现「归档管理」section；侧栏底部不再有归档管理按钮。
@@ -420,7 +411,7 @@ dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.5
 - peer 闸门：版本范围覆盖 0.1.7/0.2.0/0.2.1-rc/0.2.2-rc（`^0.2.1-rc.0` 上界 0.3.0）；设置页导航图标插槽 `settings.section.icon` 需 0.2.2+。
 - 面板层级：设置页内容由 settings shell 渲染；侧栏面板由 layout `main` 渲染；删除确认使用 fixed overlay，不依赖 footer 层级。
 - 设置页导航图标：宿主没有 `settings.section.icon`（≤0.2.1）或我们的注册 id 与 section id 不一致时，shell 用自己的图标表/齿轮；插件不注入 DOM、不抛错。
-- 工作区路径已不存在或不是目录：`open` 返回 `path-missing` / `path-not-directory`，客户端 notice 提示，不启动资源管理器。
+- 打开工作区目录不再由本插件实现（v1.32 起交给 DSH 自带的 open-in-app）；插件不再解析工作区路径，因此没有 `path-missing` / `path-not-directory` 这类失败分支。
 - 会话 header 找不到：`session-missing`；构建无法定位日志：`session-locate-unavailable`；日志目录不存在或在定位后被删除：`session-log-missing`；均只提示，不回退打开工作区。
 - 与第三方插件并存：不同 Remote 命名空间与 slot id，不修改其文件。
 - 计划漂移：未写入 `PLAN.md` 的行为视为未批准范围。
@@ -469,10 +460,10 @@ dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.5
 - [x] `npm run check`、`npm test`、`npm run verify` 全部通过。
 - [x] 安装后 profile 配置包含该 bundle，无兼容性跳过诊断。
 - [x] 用户重启后：会话菜单项正常。
-- [ ] 会话 “…” 菜单出现「打开工作区文件夹」，点击打开该会话所属工作区目录。
+- [ ] 会话 “…” 菜单**只**出现插件自带的「打开会话文件夹」；「打开工作区文件夹」改由 DSH 自带（open-in-app）提供，不再重复。
 - [ ] 会话 “…” 菜单出现「打开会话文件夹」，点击打开该会话日志目录；空白/已删日志给出可读提示。
 - [ ] 设置页出现「归档管理」section，归档管理操作正常。
-- [ ] 设置页导航「归档管理」图标与侧栏归档图标一致（明暗主题）；异常时自动回退 DSH 默认齿轮。
+- [ ] 设置页导航「归档管理」图标由 `settings.section.icon` 提供且只出现一次（不再与齿轮并排），明暗主题/选中态跟随宿主；≤0.2.1 无该插槽时回退默认齿轮。
 - [ ] 设置页开关优先使用 DSH 原生 `Switch`，明暗主题下与内置插件列表开关的主题色/形状/状态色一致。
 - [ ] 「在侧栏显示归档管理」开关可注册/注销侧栏全局面板入口，并在关闭时离开已打开的面板。
 - [ ] 侧栏入口与设置页展示的是**同一个**归档管理页面（都带「在侧栏显示归档管理」开关，内容/顺序一致），全插件只有一个归档管理页面。

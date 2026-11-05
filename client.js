@@ -3,9 +3,9 @@
  *
  * Loaded by the DSH web shell through `window.__ModuleLoader__.load`. It
  * contributes:
- *   - two session-row "..." menu entries (`sidebar.workspaces.session.menu.item`):
- *     "Open workspace folder" opens the session's workspace directory, and
- *     "Open session folder" opens the session log directory;
+ *   - one session-row "..." menu entry (`sidebar.workspaces.session.menu.item`):
+ *     "Open session folder" opens the session log directory (the workspace
+ *     folder itself is a built-in DSH action since 0.2.2);
  *   - an "Archive manager" settings section (`settings.section`) that lists
  *     archived sessions grouped by workspace, with search, unarchive and
  *     confirmed permanent delete, plus its nav glyph through the official
@@ -149,7 +149,6 @@ window.__ModuleLoader__.load({
 
     // ---- locale dictionaries -------------------------------------------------
     const ZH = {
-      "menu.openWorkspaceFolder": "打开工作区文件夹",
       "menu.openSessionFolder": "打开会话文件夹",
       "settings.nav": "归档管理",
       "settings.pin": "在侧栏显示归档管理",
@@ -189,15 +188,11 @@ window.__ModuleLoader__.load({
       "errors.delete-failed": "删除会话文件失败：{message}",
       "errors.archive-cleanup-failed": "日志已删除，但归档记录清理失败，请重试",
       "errors.write-failed": "写入归档状态失败",
-      "errors.path-missing": "工作区目录不存在",
-      "errors.path-not-directory": "工作区路径不是文件夹",
-      "errors.launch-failed": "无法启动资源管理器：{message}",
       "errors.state-failed": "读取归档状态失败",
       "errors.unknown": "操作失败：{message}",
     };
 
     const EN = {
-      "menu.openWorkspaceFolder": "Open workspace folder",
       "menu.openSessionFolder": "Open session folder",
       "settings.nav": "Archive manager",
       "settings.pin": "Show archive manager in sidebar",
@@ -237,9 +232,6 @@ window.__ModuleLoader__.load({
       "errors.delete-failed": "Could not delete the session files: {message}",
       "errors.archive-cleanup-failed": "The log was deleted, but the archive record could not be cleaned up; try again",
       "errors.write-failed": "Could not write the archive state",
-      "errors.path-missing": "The workspace directory does not exist",
-      "errors.path-not-directory": "The workspace path is not a directory",
-      "errors.launch-failed": "Could not launch File Explorer: {message}",
       "errors.state-failed": "Could not read the archive state",
       "errors.unknown": "Operation failed: {message}",
     };
@@ -255,8 +247,6 @@ window.__ModuleLoader__.load({
       "delete-failed",
       "archive-cleanup-failed",
       "write-failed",
-      "path-missing",
-      "path-not-directory",
       "launch-failed",
       "state-failed",
     ]);
@@ -333,22 +323,6 @@ window.__ModuleLoader__.load({
           result: strictClientCodec("dsh-archive-ext#ArchiveExtStateResult"),
         },
         {
-          id: "dsh-archive-ext#archiveExt/open",
-          service: "archiveExt",
-          namespace: "archiveExt",
-          method: "open",
-          invocation: { kind: "direct" },
-          parameters: [
-            {
-              name: "request",
-              wire: "request",
-              source: "json",
-              codec: strictClientCodec("dsh-archive-ext#ArchiveExtOpenRequest"),
-            },
-          ],
-          result: strictClientCodec("dsh-archive-ext#ArchiveExtOpenResult"),
-        },
-        {
           id: "dsh-archive-ext#archiveExt/openSessionStorage",
           service: "archiveExt",
           namespace: "archiveExt",
@@ -385,25 +359,6 @@ window.__ModuleLoader__.load({
         h("rect", { x: 1.5, y: 2, width: 11, height: 3.5, rx: 0.8 }),
         h("path", { d: "M2.5 5.5v5a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-5" }),
         h("path", { d: "M5.5 8h3" }),
-      );
-    }
-
-    function IconFolderOpen({ size = 16 }) {
-      return h(
-        "svg",
-        {
-          width: size,
-          height: size,
-          viewBox: "0 0 16 16",
-          fill: "none",
-          stroke: "currentColor",
-          strokeWidth: 1.3,
-          strokeLinecap: "round",
-          strokeLinejoin: "round",
-          "aria-hidden": true,
-        },
-        h("path", { d: "M1.5 4.5a1 1 0 0 1 1-1h3l1.5 2h6.5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7Z" }),
-        h("path", { d: "M1.8 8.2h12.4" }),
       );
     }
 
@@ -627,16 +582,6 @@ window.__ModuleLoader__.load({
         icon,
         h("span", null, label),
       );
-    }
-
-    function OpenWorkspaceFolderMenuItem(props) {
-      const { sessionId, t, openWorkspaceFolder } = props;
-      return h(SessionMenuRow, {
-        useMenuOpenState: props.useMenuOpenState,
-        icon: h(IconFolderOpen, { size: 14 }),
-        label: t("menu.openWorkspaceFolder"),
-        onSelect: () => void openWorkspaceFolder(sessionId),
-      });
     }
 
     function OpenSessionFolderMenuItem(props) {
@@ -1251,7 +1196,6 @@ window.__ModuleLoader__.load({
         }
         void runOpen(invoke, sessionId);
       };
-      const openWorkspaceFolder = (sessionId) => callRemoteOpen("open", sessionId);
       const openSessionFolder = (sessionId) => callRemoteOpen("openSessionStorage", sessionId);
 
       const getLayout = () => {
@@ -1349,17 +1293,8 @@ window.__ModuleLoader__.load({
         syncSidebar();
       };
 
-      ctx.slots.inject("sidebar.workspaces.session.menu.item", function* () {
-        yield ctx.slots.register(
-          {
-            name: "sidebar.workspaces.session.menu.item",
-            id: "archive-ext.open-workspace-folder",
-            order: 430,
-            inject: () => ({ t, openWorkspaceFolder }),
-          },
-          OpenWorkspaceFolderMenuItem,
-        );
-        yield ctx.slots.register(
+      ctx.slots.inject("sidebar.workspaces.session.menu.item", () =>
+        ctx.slots.register(
           {
             name: "sidebar.workspaces.session.menu.item",
             id: "archive-ext.open-session-folder",
@@ -1367,8 +1302,8 @@ window.__ModuleLoader__.load({
             inject: () => ({ t, openSessionFolder }),
           },
           OpenSessionFolderMenuItem,
-        );
-      });
+        ),
+      );
 
       ctx.slots.inject("sidebar.panellist", () => {
         sidebarSlotReady = true;

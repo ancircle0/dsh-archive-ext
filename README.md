@@ -10,17 +10,16 @@
 插件只向 DSH 的会话菜单添加入口，不替换或改写内置菜单项，也不依赖其他第三方插件。
 
 ## 预览 
-![打开工作区文件夹](screenshot/preview-open-in-explorer.png)
 ![打开会话文件夹](screenshot/preview-archve-manager.png)
 
 ## 功能特性
 
 ### 会话菜单快捷入口
 
-- **打开工作区文件夹**：打开当前会话所属的工作区目录。
 - **打开会话文件夹**：打开该会话的日志目录（通常在 `~/.dsh/sessions/.../session-<id>/`）。
 - 使用系统文件管理器：Windows Explorer、macOS Finder、Linux `xdg-open`。
 - 会话日志尚未生成时，会显示可读提示，而不是打开错误路径。
+- 打开工作区目录自 DSH `0.2.2` 起由官方提供（会话菜单里的“在文件管理器中显示”与会话头部的 Open In 按钮），本插件不再重复提供。
 
 ### 归档管理
 
@@ -40,7 +39,8 @@
 
 ## 兼容性
 
-- DSH `0.1.7` 及以上；当前验证运行时为 `0.2.1-rc.2`。
+- DSH `0.1.7` 及以上；当前验证运行时为 `0.2.2-rc.1`。
+- 设置页导航图标使用官方插槽 `settings.section.icon`（DSH `0.2.2+`）；更早版本会显示 DSH 默认齿轮，其余功能不受影响。
 - Web UI 与 Desktop 均可使用。
 - Windows 优先验证；macOS / Linux 使用对应的系统命令打开目录。
 
@@ -55,14 +55,14 @@ dsh plugin --profile desktop add @ancircle0/dsh-archive-ext
 需要固定版本时：
 
 ```bash
-dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.5
+dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.9
 ```
 
 本地开发（从仓库打包后安装，等价于 npm 安装形态）：
 
 ```bash
-npm pack                                                  # 生成 ancircle0-dsh-archive-ext-0.1.5.tgz
-dsh plugin --profile desktop add .\ancircle0-dsh-archive-ext-0.1.5.tgz
+npm pack                                                  # 生成 ancircle0-dsh-archive-ext-0.1.9.tgz
+dsh plugin --profile desktop add .\ancircle0-dsh-archive-ext-0.1.9.tgz
 ```
 
 > **不要用目录 / 软链（`link:`）安装仓库目录。** 那样插件会被放在 profile 之外，宿主只按插件自身的 `node_modules` 解析模块，`@deepseek-ai/*` 宿主包会找不到（`ERR_MODULE_NOT_FOUND`），整个插件不会激活。安装必须以 npm 包形态（registry 包或上面的 tarball）进行。
@@ -70,7 +70,7 @@ dsh plugin --profile desktop add .\ancircle0-dsh-archive-ext-0.1.5.tgz
 Windows 下 tarball 路径示例：
 
 ```powershell
-dsh plugin --profile desktop add E:\build\ancircle0-dsh-archive-ext-0.1.5.tgz
+dsh plugin --profile desktop add E:\build\ancircle0-dsh-archive-ext-0.1.9.tgz
 ```
 
 安装或更新后，请**完全退出并重新启动 DSH**。仅刷新页面不会重新加载 Host 插件代码。
@@ -89,8 +89,8 @@ dsh plugin --profile desktop remove @ancircle0/dsh-archive-ext
 
 在任意会话行点击 “…”：
 
-- **打开工作区文件夹**：打开该会话所属的工作区目录。
 - **打开会话文件夹**：打开该会话的日志目录。
+- 打开**工作区目录**不需要本插件：DSH `0.2.2+` 自带「在文件管理器中显示」与会话头部的 Open In 按钮。
 
 如果会话还没有生成日志（例如刚创建、尚未产生内容），「打开会话文件夹」会提示「会话日志尚未生成或已被删除」。
 
@@ -113,14 +113,15 @@ dsh plugin --profile desktop remove @ancircle0/dsh-archive-ext
 
 - 插件本身**不发起网络请求，也不采集遥测数据**。
 - 通过 DSH 提供的服务读取工作区与会话元数据，并读写归档状态。
-- 只对解析出的工作区目录或会话日志目录执行操作；不会浏览其他路径。
+- 只对解析出的会话日志目录执行操作；不会浏览其他路径。
 - 打开文件夹时调用系统文件管理器命令。
 - 永久删除只在用户二次确认后执行，且不可恢复。
 - 侧栏开关仅保存在浏览器 `localStorage`（key `dsh-archive-ext.sidebar`）。
 
 ## 已知限制
 
-- 工作区行 “…” 菜单暂不支持插件添加入口，因此入口位于会话行 “…” 菜单；插件不替换 DSH 原生菜单项。
+- 插件只在会话行 “…” 菜单提供一个条目（打开会话文件夹）；不替换 DSH 原生菜单项，也不重复提供打开工作区目录（该能力由 DSH `0.2.2+` 自带）。
+- 设置页导航图标依赖 DSH `0.2.2+` 的官方插槽 `settings.section.icon`；更早版本显示 DSH 默认齿轮。
 - 「打开会话文件夹」依赖会话日志已持久化。
 - 永久删除不可恢复。
 - DSH 升级若调整插件接口，插件可能需要同步适配。

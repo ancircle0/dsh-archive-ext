@@ -177,10 +177,9 @@ await module.apply(ctx);
 
 assert.ok(mounted, "apply must mount the archiveExt Remote namespace");
 assert.equal(mounted.package, "dsh-archive-ext");
-assert.equal(mounted.descriptors.length, 5);
+assert.equal(mounted.descriptors.length, 4);
 assert.deepEqual([...mounted.descriptors.map((entry) => entry.method)].sort(), [
   "delete",
-  "open",
   "openSessionStorage",
   "restore",
   "state",
@@ -211,11 +210,8 @@ for (const injection of injections) {
   }
 }
 
-// Settings section, session menu entries and the hidden toast are always registered.
+// Settings section, session menu entry and the hidden toast are always registered.
 const settings = registrations.find((entry) => entry.options.name === "settings.section");
-const workspaceFolderEntry = registrations.find(
-  (entry) => entry.options.id === "archive-ext.open-workspace-folder",
-);
 const sessionMenuEntry = registrations.find(
   (entry) => entry.options.id === "archive-ext.open-session-folder",
 );
@@ -230,10 +226,6 @@ const navIconEntry = registrations.find((entry) => entry.options.name === "setti
 assert.ok(navIconEntry, "settings.section.icon registration");
 assert.equal(navIconEntry.options.id, settings.options.id);
 assert.equal(typeof navIconEntry.component, "function");
-assert.ok(workspaceFolderEntry, "open-workspace-folder registration");
-assert.equal(workspaceFolderEntry.options.name, "sidebar.workspaces.session.menu.item");
-assert.equal(workspaceFolderEntry.options.order, 430);
-assert.equal(typeof workspaceFolderEntry.component, "function");
 assert.ok(sessionMenuEntry, "open-session-folder registration");
 assert.equal(sessionMenuEntry.options.name, "sidebar.workspaces.session.menu.item");
 assert.equal(sessionMenuEntry.options.order, 440);
@@ -242,12 +234,13 @@ assert.ok(toast, "toast registration");
 assert.equal(toast.options.name, "sidebar.footer.action");
 assert.equal(registrations.some((entry) => entry.options.id === "archive-ext.page"), false);
 
-const workspaceFolderInjected = workspaceFolderEntry.options.inject();
-assert.equal(typeof workspaceFolderInjected.t, "function");
-assert.equal(typeof workspaceFolderInjected.openWorkspaceFolder, "function");
 const sessionMenuInjected = sessionMenuEntry.options.inject();
 assert.equal(typeof sessionMenuInjected.t, "function");
 assert.equal(typeof sessionMenuInjected.openSessionFolder, "function");
+// Opening the workspace folder is a built-in DSH action now, so the plugin must
+// not contribute that entry (or its Remote method) any more.
+assert.equal(registrations.some((entry) => entry.options.id === "archive-ext.open-workspace-folder"), false);
+assert.equal(mounted.descriptors.some((entry) => entry.method === "open"), false);
 
 const settingsInjected = settings.options.inject();
 assert.equal(typeof settingsInjected.t, "function");

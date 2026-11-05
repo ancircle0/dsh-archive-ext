@@ -9,13 +9,9 @@ import {
   deletionTarget,
   deleteArchivedSession,
   ghostSessionIds,
-  openInExplorer,
   openSessionStorageInExplorer,
-  pickWorkspacePath,
-  resolveSessionDirectory,
   resolveSessionStorageDirectory,
   restoreArchivedSession,
-  validateDirectory,
 } from "../lib/core.js";
 
 async function makeTemp() {
@@ -88,52 +84,6 @@ test("deletionTarget handles directory, file and missing paths", async () => {
     assert.equal(deletionTarget(logFile), directory);
     assert.equal(deletionTarget(join(directory, "missing.v4.log")), directory);
     assert.equal(deletionTarget(join(directory, "missing-directory")), join(directory, "missing-directory"));
-  } finally {
-    await dropTemp(directory);
-  }
-});
-
-test("pickWorkspacePath finds the workspace owning a session", () => {
-  const workspaces = [
-    { workspaceId: "w1", path: "C:\\one", sessionIds: ["a", "b"] },
-    { workspaceId: "w2", path: "C:\\two", sessionIds: ["c"] },
-  ];
-  assert.equal(pickWorkspacePath(workspaces, "b"), "C:\\one");
-  assert.equal(pickWorkspacePath(workspaces, "c"), "C:\\two");
-  assert.equal(pickWorkspacePath(workspaces, "z"), undefined);
-  assert.equal(pickWorkspacePath(undefined, "b"), undefined);
-});
-
-test("resolveSessionDirectory prefers workspace path and falls back to cwd", async () => {
-  const directory = await makeTemp();
-  try {
-    const fromWorkspace = makeServices({
-      workspaces: [{ workspaceId: "w1", path: directory, sessionIds: ["s1"] }],
-    });
-    const first = await resolveSessionDirectory(fromWorkspace.services, "s1");
-    assert.equal(first.ok, true);
-    assert.equal(first.path, directory);
-
-    const fromLive = makeServices({
-      sessions: new Map([["s2", { header: { cwd: directory } }]]),
-    });
-    const second = await resolveSessionDirectory(fromLive.services, "s2");
-    assert.equal(second.ok, true);
-    assert.equal(second.path, directory);
-
-    const missing = makeServices();
-    const third = await resolveSessionDirectory(missing.services, "s3");
-    assert.equal(third.ok, false);
-    assert.equal(third.error.code, "path-missing");
-
-    const file = join(directory, "not-a-directory");
-    await writeFile(file, "x");
-    const notDirectory = makeServices({
-      workspaces: [{ workspaceId: "w1", path: file, sessionIds: ["s4"] }],
-    });
-    const fourth = await resolveSessionDirectory(notDirectory.services, "s4");
-    assert.equal(fourth.ok, false);
-    assert.equal(fourth.error.code, "path-not-directory");
   } finally {
     await dropTemp(directory);
   }
@@ -338,75 +288,6 @@ test("buildOpenCommand covers Windows, macOS and Linux", () => {
   assert.deepEqual(buildOpenCommand("darwin", "/tmp/ws"), { file: "open", args: ["/tmp/ws"] });
   assert.deepEqual(buildOpenCommand("linux", "/tmp/ws"), { file: "xdg-open", args: ["/tmp/ws"] });
   assert.equal(buildOpenCommand("plan9", "/tmp/ws"), null);
-});
-
-test("openInExplorer launches the platform command and classifies failures", async () => {
-  const directory = await makeTemp();
-  try {
-    const { services } = makeServices({
-      workspaces: [{ workspaceId: "w1", path: directory, sessionIds: ["s1"] }],
-    });
-    const calls = [];
-    const success = await openInExplorer({
-      sessionId: "s1",
-      services,
-      platform: "win32",
-      execFile: (file, args, options, callback) => {
-        calls.push({ file, args, options });
-        callback(null);
-      },
-    });
-    assert.equal(success.ok, true);
-    assert.equal(success.value.path, directory);
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].file, "explorer.exe");
-    assert.deepEqual(calls[0].args, [directory]);
-
-    const delegated = await openInExplorer({
-      sessionId: "s1",
-      services,
-      platform: "win32",
-      execFile: (_file, _args, _options, callback) => callback({ code: 1 }),
-    });
-    assert.equal(delegated.ok, true);
-
-    const missingBinary = await openInExplorer({
-      sessionId: "s1",
-      services,
-      platform: "linux",
-      execFile: (_file, _args, _options, callback) => callback({ code: "ENOENT" }),
-    });
-    assert.equal(missingBinary.ok, false);
-    assert.equal(missingBinary.error.code, "launch-failed");
-
-    const missingPath = await openInExplorer({
-      sessionId: "unknown",
-      services,
-      platform: "win32",
-      execFile: (_file, _args, _options, callback) => callback(null),
-    });
-    assert.equal(missingPath.ok, false);
-    assert.equal(missingPath.error.code, "path-missing");
-  } finally {
-    await dropTemp(directory);
-  }
-});
-
-test("validateDirectory requires an existing absolute directory", async () => {
-  const directory = await makeTemp();
-  try {
-    const valid = validateDirectory(directory);
-    assert.equal(valid.ok, true);
-    assert.equal(valid.path, directory);
-    assert.equal(validateDirectory("").error.code, "path-missing");
-    assert.equal(validateDirectory("relative/path").error.code, "path-missing");
-    assert.equal(validateDirectory(join(directory, "missing")).error.code, "path-missing");
-    const file = join(directory, "file.txt");
-    await writeFile(file, "x");
-    assert.equal(validateDirectory(file).error.code, "path-not-directory");
-  } finally {
-    await dropTemp(directory);
-  }
 });
 
 test("resolveSessionStorageDirectory resolves a persisted session log directory", async () => {
