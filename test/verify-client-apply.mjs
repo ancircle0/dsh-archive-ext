@@ -186,14 +186,10 @@ assert.deepEqual([...mounted.descriptors.map((entry) => entry.method)].sort(), [
   "state",
 ]);
 
-// apply wires the best-effort settings nav glyph (style kept even when no row
-// is mounted yet; the MutationObserver claims the row when the dialog opens).
-const navIconStyle = createdElements.find(
-  (element) => element.attributes["data-plugin-css"] === "archive-ext/settings-nav-icon",
-);
-assert.ok(navIconStyle, "apply must install the settings nav icon stylesheet");
-assert.match(navIconStyle.textContent, /mask-image/);
-assert.ok(sandbox.document.head.children.includes(navIconStyle));
+// The settings nav glyph is contributed through the official
+// `settings.section.icon` slot, so apply installs no DOM enhancement and no
+// extra stylesheet.
+assert.equal(module.CLIENT_NAV_ICON, undefined);
 
 // The old workspace-row menu DOM enhancement was removed; only the official
 // session-menu slot entries remain.
@@ -201,6 +197,7 @@ assert.equal(module.CLIENT_WORKSPACE_MENU, undefined);
 
 assert.deepEqual(injections.map((entry) => entry.key).sort(), [
   "settings.section",
+  "settings.section.icon",
   "sidebar.footer.action",
   "sidebar.panellist",
   "sidebar.workspaces.session.menu.item",
@@ -227,6 +224,12 @@ assert.ok(settings, "settings.section registration");
 assert.equal(settings.options.id, "archive-ext");
 assert.equal(settings.options.order, 50);
 assert.equal(typeof settings.component, "function");
+// The nav glyph is a second registration whose id must equal the section id,
+// otherwise the shell never renders it.
+const navIconEntry = registrations.find((entry) => entry.options.name === "settings.section.icon");
+assert.ok(navIconEntry, "settings.section.icon registration");
+assert.equal(navIconEntry.options.id, settings.options.id);
+assert.equal(typeof navIconEntry.component, "function");
 assert.ok(workspaceFolderEntry, "open-workspace-folder registration");
 assert.equal(workspaceFolderEntry.options.name, "sidebar.workspaces.session.menu.item");
 assert.equal(workspaceFolderEntry.options.order, 430);
@@ -313,5 +316,4 @@ assert.equal(row.disposed, true);
 for (const cleanup of cleanups) {
   if (typeof cleanup === "function") cleanup();
 }
-assert.equal(navIconStyle.removed, true, "nav icon stylesheet must be removed with the plugin");
 console.log("verify-client-apply: ok");

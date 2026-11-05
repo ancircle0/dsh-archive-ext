@@ -38,6 +38,8 @@
 | v1.28 | 2026-10-28 | **删除手写的 `typert.host.js`**，改用宿主 Gateway 的 SRC 模式：`dsh-typert-loader` 文档写明「Packages without the export are skipped silently」，`dsh-api-gateway` 的 `resolveDescriptor()` 在注册表没有该 endpoint 的严格定义时回落 `resolveSrcDescriptor()`——按服务的 `typertRemote` 绑定 + 原型 `remote-methods` 标记解析，参数名即线名（`request`）。因此 `TypertRemoteService` + `@Remote()` 已经足够，`./typert` 清单、`zod` 依赖、`test/verify-typert-manifest.mjs` 全部移除。版本号升到 `0.1.6` | 少约 340 行手写协议描述和一个运行时依赖（`dependencies` 变为空）；代价是失去严格线校验，参数/结果按 JSON pass-through（与 Client 的 passthrough codec 一致） |
 | v1.29 | 2026-10-28 | 停用三处自造实现，改用宿主组件/模块：①删除确认框改宿主 `ui.Modal`（`open/title/closeLabel/onClose/className/footer`，Escape/遮罩/焦点/层级由宿主管）；②行内动作与对话框按钮改宿主 `ui.Button`（`variant: ghost/outline`；宿主无 danger 变体，危险色用 `--dsw-alias-state-error-primary` 的本地类）；③`ghostIds`/`notice`/侧栏开关 4 个 store 改宿主 `@deepseek-ai/dsh-client-store` 的 `createSnapshotStore` + `React.useSyncExternalStore`。三者都保留本地回退（宿主缺导出时用旧实现，测试用桩覆盖）。版本号升到 `0.1.7` | 与宿主外观/行为同源，去掉自绘遮罩与两套按钮样式；`CLIENT_UI` 导出让“宿主导出没取到”在测试中可见 |
 | v1.30 | 2026-10-28 | 记录自造实现审计的最终取舍（详见「方案演进与未采用方案 §5」）：**放弃**把 4 个手绘 SVG 换成宿主图标（手绘已符合要求，换取宿主图标会把外观绑死在宿主导出名上），**放弃**把 `settings.section` 的 id 改成宿主内置图标表里的 `archived-sessions`（不占用官方 id 单元格），因此设置页导航图标继续用可失败的 CSS mask 增强。无代码改动 | 图标与导航增强的现状成为明确决定，不再被后续审计重复提出 |
+| v1.31 | 2026-11-05 | DSH 升到 0.2.2-rc.1 后设置页导航行变成 `button > span.navIcon > ⟨slot⟩`，我们那段「隐藏宿主图标」的 `> svg` 直接子选择器失效 → 出现“自绘图标 + 齿轮”并排。新版提供了官方插槽 `settings.section.icon`（list、root，按 section id 匹配，owner props `{ size, active }`，未注册时 shell 用内置图标表/齿轮），因此**整段 DOM 增强删除**（`NAV_ICON_*`、`isOwnNavRow`、`navIconMaskSvg/Url/Css`、`supportsMaskImage`、`installSettingsNavIcon`、`CLIENT_NAV_ICON`、`test/nav-icon.test.mjs`），改为注册该插槽并渲染同一个 `IconArchive`。版本号升到 `0.1.8` | 少约 200 行 DOM/样式注入与一个观察器；图标走宿主同一条渲染路径（`currentColor` 自动跟随选中/hover/主题）；代价是 `settings.section.icon` 只在 0.2.2+ 存在，旧版回退齿轮但插件其余功能正常 |
+
 
 ## 目标
 
@@ -60,15 +62,15 @@
 
 ## 已确认的决定
 
-- 新建独立插件，包名 `@ancircle0/dsh-archive-ext`，版本 `0.1.7`，公开 npm 包（`publishConfig.access = "public"`）。
+- 新建独立插件，包名 `@ancircle0/dsh-archive-ext`，版本 `0.1.8`，公开 npm 包（`publishConfig.access = "public"`）。
 - **放弃工作区行菜单的 DOM 注入**（v1.15–v1.17 的 `installWorkspaceMenuAction` / 归属识别 / 回退状态全部移除）：DSH 没有工作区菜单 slot，注入随宿主 DOM 变化易失效。菜单入口全部改用官方 `sidebar.workspaces.session.menu.item`。
 - 会话 “…” 菜单新增两个条目（均为官方 slot 条目，使用 `MenuItemButton`）：
   - `archive-ext.open-workspace-folder`，order 430，label「打开工作区文件夹」，图标文件夹；调用 `open({ sessionId })`，由 Host 解析该会话所属工作区目录（工作区路径优先，回退 live/persisted `cwd`）。
   - `archive-ext.open-session-folder`，order 440，label「打开会话文件夹」，图标归档；调用新增 `openSessionStorage({ sessionId })`，打开会话日志所在目录。
 - Host `open` 请求恢复为仅 `{ sessionId }`；移除 workspaceId 分支、`resolveWorkspaceDirectory`、错误码 `invalid-workspace` / `workspace-missing`。
 - 新增 Host Remote 方法 `openSessionStorage({ sessionId })`：`findHeader` → `sessionPersistence.locate(header)` → `deletionTarget(location.path)` 归一为会话目录 → 目录校验 → Explorer；错误码 `invalid-session`（空/非法 id）、`session-missing`（找不到 header）、`session-locate-unavailable`（构建无法定位日志）、`session-log-missing`（日志路径为空、目录不存在或不是目录）、`launch-failed`。日志不存在时只提示，不回退打开工作区目录。
-- 两个会话菜单条目始终显示，不依赖工作区菜单增强状态；保留设置页 section、侧栏固定入口与设置图标增强。
-- 归档管理入口从 footer 迁移到**设置页 section**：注册 `settings.section`（id `archive-ext`，order 50，label「归档管理」）。DSH 没有设置 section 图标 API；设置页导航图标通过**可失败、可回退的导航行增强**与侧栏保持一致：只标记本插件自己的那一行，用 CSS mask 绘制同一个归档图标，异常时清理并回退到 DSH 默认齿轮。
+- 两个会话菜单条目始终显示，不依赖工作区菜单增强状态；保留设置页 section、侧栏固定入口与设置页导航图标插槽。
+- 归档管理入口从 footer 迁移到**设置页 section**：注册 `settings.section`（id `archive-ext`，order 50，label「归档管理」）。设置页导航图标自 v1.31 起用官方插槽 `settings.section.icon`（注册 id 必须与 section id 一致），渲染与侧栏行相同的 `IconArchive`；不再有任何 DOM 注入。
 - 可选侧栏固定入口使用官方 `sidebar.panellist`（列表行）+ `main`（keyed 面板内容）+ `layout.selectPanel(id)`；开关状态保存在浏览器 `localStorage`，开启后侧栏出现归档管理行，点击在主界面渲染**与设置页完全相同的归档管理页面**（同一个 `ArchiveManagerSurface`，同样包含「在侧栏显示归档管理」开关），关闭时若当前面板是归档管理则 `selectPanel(null)`。
 - **只有一个归档管理页面**（v1.26）：两个入口（设置页 section、侧栏固定入口）挂载同一个页面组件与同一份内容，不再存在“侧栏面板版没有开关”的第二个页面变体。DSH 没有“打开设置页并定位到某个 section”的插件 API（设置面板的开关/选中态只存在 ui-settings-general 内部 store；`settings.section` 只拿到 `close`；`settings.launcher` 是单槽且已被账号菜单占用），因此不采用“侧栏入口去驱动设置面板”的做法，也不为此新增 DOM 注入。
 - Client 半的控件一律优先用宿主实现，取不到才用本地回退（v1.29 扩展）：
@@ -79,7 +81,7 @@
   - 注意：DSH 的插件作者规范 `references/practices.md` 建议不要 require 宿主 Client 包；这里是有意的取舍（与宿主控件完全一致），代价是外观依赖宿主导出。
 - footer 只保留一个不可见的 toast 注册（用于“打开资源管理器失败”等全局提示），不再提供归档管理入口。
 - **硬约束（v1.27）：禁止 link 安装。** 插件一律以 npm 包形态安装 —— npmjs registry 包，或 `npm pack` 产出的 tarball（`dsh plugin --profile <p> add ./<name>-<version>.tgz`）。**不得**用 `link:`、目录软链或直接 `add <本地目录>`：那会把插件放在 profiles 树外，`dsh-app-boot` 走 `routeLinked` 只解析链接目标自己的 `node_modules`，Host 半的 `import "@deepseek-ai/dsh-typert-protocol"` / `"@deepseek-ai/cordis"` 会 `ERR_MODULE_NOT_FOUND` 导致整个插件不激活。本地开发改代码后必须重新 pack + 安装（或发 registry），不接受 link。
-- 目标运行时 DSH 0.1.7+（当前安装为 0.2.1-rc.3），优先验证 Windows；打开目录的命令同时覆盖 macOS/Linux。
+- 目标运行时 DSH 0.1.7+（当前安装为 0.2.2-rc.1），优先验证 Windows；打开目录的命令同时覆盖 macOS/Linux。设置页导航图标插槽 `settings.section.icon` 需要 0.2.2+。
 - 安装后不自行重启 DSH（会终止当前会话），由用户重启并验收。
 
 ## 方案演进与未采用方案
@@ -133,10 +135,12 @@
 - **用 `sidebar.workspaces.directoryFlow`**：用于目录创建/选择流程，不是工作区行菜单。
 - **只保留单一「在资源管理器中打开」**：无法同时满足“打开工作区”和“打开会话日志”两个需求；当前拆成两个语义明确的条目。
 
-### 4. 仍然保留的 DOM 增强
+### 4. 已移除的 DOM 增强：设置页导航图标（v1.14 引入，v1.31 删除）
 
-- 设置页导航图标：DSH `settings.section` 没有 icon 字段，只能标记本插件自己的导航行并注入 CSS mask；与菜单入口独立，全程异常捕获并回退默认齿轮。它不承担菜单/路由功能，失败只影响图标。
-- v1.30 曾评估用「把 section id 改成 `archived-sessions`」来免费吃下宿主内置的图标表（`ui-settings-general` 的 `navIcon(id)` 对该 id 直接返回 `IconArchiveOutlineMedium`），从而删掉整段增强；**决定不采用**：那会占用官方 id 单元格，将来官方若出同名 section 会互相替换。增强继续保留。
+- v1.14 起：`settings.section` 只投影 `id`/`order`/`label`，没有图标字段，于是标记本插件自己的导航行、注入 CSS mask 画归档图标，异常时回退默认齿轮。约 200 行，含 MutationObserver 与 `<style>` 注入。
+- v1.30 曾评估「把 section id 改成 `archived-sessions`」以免费吃下宿主内置图标表（`navIcon(id)` 对该 id 返回 `IconArchiveOutlineMedium`），但**拒绝占用官方 id 单元格**。
+- v1.31（DSH 0.2.2-rc.1）：宿主新增官方插槽 `settings.section.icon`，DOM 增强整段删除，改为注册插槽。同一次升级也证明这类补丁的脆弱性：导航行结构从 `button > svg` 变成 `button > span.navIcon > ⟨slot⟩`，`> svg` 直接子选择器立刻失效，界面上出现“自绘图标 + 齿轮”并排。
+- 结论：**不再保留任何 DOM 注入**。设置页图标、侧栏图标、菜单项、页面内容全部走 slot + 官方契约。
 
 ### 5. 自造实现审计的取舍（v1.29 采纳 / v1.30 放弃）
 
@@ -148,7 +152,7 @@
 | 行内与对话框按钮 → 宿主 `ui.Button` | 采纳（v1.29） | 两套自绘按钮样式；宿主唯一的缺口是没有 danger 变体，用本地色类补 |
 | 4 个 store → 宿主 `@deepseek-ai/dsh-client-store` | 采纳（v1.29） | 20 行重复实现宿主已有的 `createSnapshotStore` |
 | 4 个手绘 SVG → 宿主 `IconArchiveOutlineMedium` / `IconFolderOpenRegular` / `IconChevronRightOutlineRegular` | **放弃（v1.30）** | 手绘图标已符合要求（尺寸/线宽/明暗主题与宿主一致），换宿主图标收益仅“少 4 个函数”，却把外观绑死在宿主导出名上（改名即退化成缺图标） |
-| 设置页导航图标改 id `archived-sessions` | **放弃（v1.30）** | 会占用官方 id 单元格，与未来官方 section 冲突；宁可保留可失败的窄范围 DOM 增强 |
+| 设置页导航图标改 id `archived-sessions` | **放弃（v1.30）** | 会占用官方 id 单元格，与未来官方 section 冲突；v1.31 起图标改由官方插槽 `settings.section.icon` 提供（仍用自有 id `archive-ext`），不再需要这个取舍 |
 | `typert.host.js` 手写清单 | 已删除（v1.28） | 官方 loader 允许缺省、Gateway 走 SRC 模式 |
 | 删会话日志 / 打开资源管理器 / 自绘 toast | 保留 | 宿主无对应 API（`sessionPersistence` 与 `fs` 都没有删除；无“用文件管理器打开”；`workspace.toast` 是固定 key 枚举） |
 
@@ -184,7 +188,6 @@ dsh-archive-ext/
 ├── locale/zh.json           # 插件元数据（中文）
 ├── icon.svg
 ├── test/core.test.mjs
-├── test/nav-icon.test.mjs   # 设置页导航图标增强 + 异常回退
 ├── test/verify-client-apply.mjs    # client apply 冒烟/契约
 ├── README.md                # 面向使用者的介绍/安装/使用文档
 ├── LICENSE
@@ -195,7 +198,7 @@ dsh-archive-ext/
 
 ### package.json
 
-- `name: "@ancircle0/dsh-archive-ext"`，`version: "0.1.7"`，`type: "module"`；无 `private`，`publishConfig.access = "public"`。
+- `name: "@ancircle0/dsh-archive-ext"`，`version: "0.1.8"`，`type: "module"`；无 `private`，`publishConfig.access = "public"`。
 - 发布元数据：`author`、`repository`、`homepage`、`bugs`、`keywords` 指向 `github.com/ancircle0/dsh-archive-ext`。
 - `main: "index.js"`。
 - `exports`：`.`、`./client`、`./cordis.patch.yml`、`./package.json`、`./locale/*.json`、`./icon`（**没有 `./typert`**：v1.28 起不用手写清单，Gateway 走 SRC 模式）。
@@ -215,7 +218,7 @@ dsh-archive-ext/
 
 ### 发布
 
-- 版本号与 Git tag 对齐（当前 `0.1.7` / `v0.1.7`）；`npm publish --access public`，`publishConfig` 已声明 public。
+- 版本号与 Git tag 对齐（当前 `0.1.8` / `v0.1.8`）；`npm publish --access public`，`publishConfig` 已声明 public。
 - README 安装命令以 npm 包名为主；本地开发用 `npm pack` 出的 tarball 安装（**不用目录/link**，见 v1.27 硬约束）。
 - DSH 插件管理没有自动升级操作；升级需要卸载旧版本后再安装新版本。
 
@@ -311,10 +314,10 @@ dsh-archive-ext/
 - `ctx.slots.inject('settings.section', ...)` + `ctx.slots.register({ name: 'settings.section', id: 'archive-ext', order: 50, label: () => t('settings.nav'), locale: NS, inject })`。
 - 内容就是唯一的归档管理页面：`ArchiveManagerSurface`（`surface: 'settings'`）——「在侧栏显示归档管理」开关 + 计数 + 搜索 + 分组列表 + 二次删除确认。
 - 开关状态从 `localStorage` 读取，切换时即时注册/注销侧栏入口；`sidebar.panellist` 不存在时开关禁用并提示当前 DSH 不支持。
-- 设置 section 的导航图标按「可失败增强」处理：DSH `settings.section` 只投影 `id`/`order`/`label`，没有图标字段。插件在设置 dialog 挂载后，仅按本地化 label 标记自己的导航按钮，注入 `currentColor` + CSS mask 的归档图标（与侧栏 `IconArchive` 同一几何）；MutationObserver 负责 locale 切换后重新匹配。
-  - 增强必须是 best-effort：`typeof document` / `body` / `head` / `querySelectorAll` / `MutationObserver` / `queueMicrotask` 逐项检测；`CSS.supports` 判断 mask-image 可用（不可用会退化成实心方块，因此直接回退齿轮）；`ctx.effect` 清理时移除标记与 `<style>`。
-  - 任何异常（定位失败、样式注入失败、label 解析抛错、观察回调抛错）都不得冒泡：捕获后立即撤销标记与样式，保持 DSH 默认齿轮图标，插件其余功能不受影响。
-  - 不修改 DSH 代码、不替换 React 子节点、不读取其他插件内容；只对本插件自己的导航行加数据属性。
+- 设置 section 的导航图标走官方插槽（v1.31）：`ctx.slots.inject('settings.section.icon', () => ctx.slots.register({ name: 'settings.section.icon', id: 'archive-ext', locale: NS }, SettingsNavIcon))`。
+  - 注册 id 必须等于 section id，否则 shell 永不渲染（`renderSlot(..., { only: row.id, fallback: navIcon(row.id) })`）。
+  - owner props `{ size, active }`：`SettingsNavIcon` 用 `size` 渲染同一个 `IconArchive`，`active` 交给宿主样式（`currentColor` 自动跟随选中/hover/主题）。
+  - 宿主没有该插槽（≤0.2.1）时注册不生效，shell 回退自己的图标表/齿轮；插件其余功能不受影响。
   - 不利用 shell 内置的 `archived-sessions` id 图标映射（会占用/替换未来官方 section 的 id 单元格）。
 
 ### 可选侧栏固定入口
@@ -365,16 +368,9 @@ dsh-archive-ext/
    - open / openSessionStorage 命令与 Windows 退出码 1；
    - restore、delete（运行中/非 live/live/无 header/失败）；
    - ghost 检测。
-3. `node test/nav-icon.test.mjs`：用 vm 加载 client bundle，覆盖设置页导航图标增强：
-   - label 精确匹配（空白/空 label/不匹配）；
-   - mask SVG/URL/CSS 与标记属性；
-   - 只标记本插件行，locale 变化后重新标记；
-   - 清理 disposer 移除标记与 `<style>`；
-   - `querySelectorAll`、label thunk、观察回调抛错时全部被捕获并回退，`apply`/cleanup 不抛；
-   - 无 document/body、CSS mask 不受支持时保持默认齿轮。
-4. `node test/verify-client-apply.mjs`：假 ModuleLoader/React/ctx，断言 `$mount`、五条 descriptors、两个 session menu 注册（id/order）、locale 注册、disposer、settings inject 的 remote，两个菜单 inject 提供的打开函数，**设置页 section 与侧栏主面板注册渲染同一个页面组件**（同一 surface，仅 `surface` 容器标记不同），以及 `CLIENT_UI` 解析到的宿主导出（`Switch`/`Button`/`Modal` 必须是桩里的同名组件）与 `createStore` 走宿主 `createSnapshotStore`。
-5. 计划同步检查：`PLAN.md` 存在、版本与变更记录完整；交付时列出相对计划的差异。
-6. 契约自检已合并进第 4 项：Remote 形状由 `lib/service.js` 的 `@Remote` 标记与 Client 端 descriptors 对齐，v1.28 起不再有独立的 TYPERT 清单可校验。
+3. `node test/verify-client-apply.mjs`：假 ModuleLoader/React/ctx，断言 `$mount`、五条 descriptors、两个 session menu 注册（id/order）、locale 注册、disposer、settings inject 的 remote，两个菜单 inject 提供的打开函数，**设置页 section 与侧栏主面板注册渲染同一个页面组件**（同一 surface，仅 `surface` 容器标记不同）、`settings.section.icon` 注册的 id 与 section id 一致，以及 `CLIENT_UI` 解析到的宿主导出（`Switch`/`Button`/`Modal` 必须是桩里的同名组件）与 `createStore` 走宿主 `createSnapshotStore`；并断言 `CLIENT_NAV_ICON` 已不存在（DOM 增强彻底删除）。
+4. 计划同步检查：`PLAN.md` 存在、版本与变更记录完整；交付时列出相对计划的差异。
+5. 契约自检已合并进第 3 项：Remote 形状由 `lib/service.js` 的 `@Remote` 标记与 Client 端 descriptors 对齐，v1.28 起不再有独立的 TYPERT 清单可校验。
 
 ### 安装验证（需批准）
 
@@ -406,7 +402,7 @@ dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.5
 11. live 会话删除后归档页与工作区列表立即移除；重启后无失效归档残留。
 12. 空状态与无效归档记录清理正常。
 13. 明暗主题正常，无 slot 崩溃；设置页导航「归档管理」图标与侧栏归档图标一致。
-14. 若导航图标增强失败（模拟异常、或 DSH 改了导航结构），设置页回退为 DSH 默认齿轮图标，DSH 不报错、归档管理其余功能正常。
+14. 设置页导航「归档管理」图标由官方插槽 `settings.section.icon` 提供：图标只出现一次（无齿轮并排），明暗主题与选中/hover 状态跟随宿主；旧版 DSH（≤0.2.1）无该插槽时显示宿主默认齿轮，插件其余功能正常。
 15. `PLAN.md` 与实际行为一致。
 
 ## 边界与失败模式
@@ -421,9 +417,9 @@ dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.5
 - 路径含空格/Unicode：`execFile` 直接传 argv。
 - 重复点击：busy 禁用按钮。
 - locale 缺失/晚到：**懒解析**并短暂重试；仍不可用时使用内置回退字典，不把 `apply` 时的一次性结果当作永久结论。
-- peer 闸门：版本范围覆盖 0.1.7/0.2.0/0.2.1-rc。
+- peer 闸门：版本范围覆盖 0.1.7/0.2.0/0.2.1-rc/0.2.2-rc（`^0.2.1-rc.0` 上界 0.3.0）；设置页导航图标插槽 `settings.section.icon` 需 0.2.2+。
 - 面板层级：设置页内容由 settings shell 渲染；侧栏面板由 layout `main` 渲染；删除确认使用 fixed overlay，不依赖 footer 层级。
-- 设置页导航图标增强失败（DOM 结构变化、样式注入失败、label 解析异常、观察回调异常）：捕获并撤销标记/样式，显示 DSH 默认齿轮；不抛错、不重试风暴、不留下半改状态。
+- 设置页导航图标：宿主没有 `settings.section.icon`（≤0.2.1）或我们的注册 id 与 section id 不一致时，shell 用自己的图标表/齿轮；插件不注入 DOM、不抛错。
 - 工作区路径已不存在或不是目录：`open` 返回 `path-missing` / `path-not-directory`，客户端 notice 提示，不启动资源管理器。
 - 会话 header 找不到：`session-missing`；构建无法定位日志：`session-locate-unavailable`；日志目录不存在或在定位后被删除：`session-log-missing`；均只提示，不回退打开工作区。
 - 与第三方插件并存：不同 Remote 命名空间与 slot id，不修改其文件。
@@ -439,7 +435,7 @@ dsh plugin --profile desktop add @ancircle0/dsh-archive-ext@0.1.5
 - 刚创建、尚未持久化的会话可能没有日志目录：点击「打开会话文件夹」会得到 `session-log-missing` 提示，这是预期行为。
 - 永久删除不可恢复；只在用户二次确认后执行，且只删除 `sessionPersistence.locate()` 解析出的会话日志目录。
 - 插件本身不发起网络请求、不采集遥测；只通过 DSH 服务读写工作区/会话元数据与归档状态，并在用户操作时启动文件管理器或删除指定会话日志目录。
-- 设置 section 没有官方图标 API；插件市场/`dsh-better-sidebar`/`dsh-skill-mcp-panel` 都用「标记自己导航行再换图标」的办法。本插件采用同样窄范围做法，并把整个增强包在异常捕获里：失败即回退 DSH 默认齿轮。上游若新增 `icon` 字段，应删除该 DOM 增强。
+- 设置页导航图标自 v1.31 起用官方插槽 `settings.section.icon`（0.2.2+）：注册 id 等于 section id 才渲染，owner props 为 `{ size, active }`，未注册时 shell 用内置图标表（含 `archived-sessions` → 归档图标）或默认齿轮。插件不再标记/改写宿主 DOM；本插件仍用自有 section id `archive-ext`，不占用官方 id 单元格。
 - 增强只观察 `document.body` 的 childList/characterData，只按本插件本地化 label 匹配 `[role="dialog"] nav button`，不读取/修改其他插件的节点内容。
 - 侧栏固定开关保存在浏览器 `localStorage`（key `dsh-archive-ext.sidebar`），跨重启保留；不跨浏览器同步。
 - 归档管理只有**一个页面**：设置页 section 与可选侧栏入口挂载同一个页面组件与同一份内容（都含「在侧栏显示归档管理」开关）；侧栏入口使用 layout `main` 面板（不再是独立固定模态框）。

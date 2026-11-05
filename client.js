@@ -8,7 +8,8 @@
  *     "Open session folder" opens the session log directory;
  *   - an "Archive manager" settings section (`settings.section`) that lists
  *     archived sessions grouped by workspace, with search, unarchive and
- *     confirmed permanent delete;
+ *     confirmed permanent delete, plus its nav glyph through the official
+ *     `settings.section.icon` seat (same id as the section);
  *   - an optional sidebar global-panel entry (`sidebar.panellist` + `main`)
  *     toggled from that settings section. It renders the very same page (same
  *     component, same props, sidebar switch included), so the plugin owns
@@ -1071,216 +1072,17 @@ window.__ModuleLoader__.load({
       return notice ? h("div", { className: "ae-toast", role: "status" }, notice.message) : null;
     }
 
-    // ---- settings nav icon (best-effort DOM enhancement) ---------------------
-    // `settings.section` only projects `id` / `order` / `label`; the settings
-    // shell draws a gear for every section id it does not know. Until DSH grows
-    // an `icon` option, claim our own nav row after the dialog mounts and draw
-    // the same archive glyph the sidebar row uses (CSS mask + currentColor, so
-    // light/dark themes match). This enhancement is strictly best-effort: on
-    // any failure it removes the marker and stylesheet, leaving the shell's
-    // gear in place. It must never throw into DSH.
-    const NAV_ICON_SELECTOR = '[role="dialog"] nav button';
-    const NAV_ICON_MARKER = "data-dsh-archive-ext-nav-icon";
-    const NAV_ICON_SIZE = 16;
-
-    /** Whether a nav row's visible text is this plugin's own section label. */
-    function isOwnNavRow(rowText, wantedLabel) {
-      const wanted = String(wantedLabel == null ? "" : wantedLabel).trim();
-      if (wanted.length === 0) return false;
-      return String(rowText == null ? "" : rowText).trim() === wanted;
+    // ---- settings nav icon (official slot) ----------------------------------
+    // The settings shell renders one seat per section id at
+    // `settings.section.icon` (owner props `{ size, active }`) and falls back to
+    // its own glyph table when nothing is registered for that id. Registering
+    // under our section id puts the same archive glyph the sidebar row uses into
+    // the nav row; `currentColor` lets the shell's hover/active styling apply.
+    function SettingsNavIcon(props) {
+      const size = props && typeof props.size === "number" ? props.size : 16;
+      return h(IconArchive, { size });
     }
 
-    /** The archive glyph (same geometry as `IconArchive`) as a mask SVG. */
-    function navIconMaskSvg() {
-      return (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" fill="none" stroke="#000" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round">' +
-        '<rect x="1.5" y="2" width="11" height="3.5" rx="0.8"/>' +
-        '<path d="M2.5 5.5v5a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-5"/>' +
-        '<path d="M5.5 8h3"/>' +
-        "</svg>"
-      );
-    }
-
-    function navIconMaskUrl(svg) {
-      return "data:image/svg+xml," + encodeURIComponent(svg === undefined ? navIconMaskSvg() : svg);
-    }
-
-    function navIconCss(maskUrl) {
-      return [
-        "[" + NAV_ICON_MARKER + "] > svg { display: none; }",
-        "[" + NAV_ICON_MARKER + "]::before {",
-        "  content: '';",
-        "  flex: none;",
-        "  width: " + NAV_ICON_SIZE + "px;",
-        "  height: " + NAV_ICON_SIZE + "px;",
-        "  background-color: currentColor;",
-        '  -webkit-mask-image: url("' + maskUrl + '");',
-        '  mask-image: url("' + maskUrl + '");',
-        "  -webkit-mask-repeat: no-repeat;",
-        "  mask-repeat: no-repeat;",
-        "  -webkit-mask-position: center;",
-        "  mask-position: center;",
-        "  -webkit-mask-size: " + NAV_ICON_SIZE + "px " + NAV_ICON_SIZE + "px;",
-        "  mask-size: " + NAV_ICON_SIZE + "px " + NAV_ICON_SIZE + "px;",
-        "}",
-      ].join("\n");
-    }
-
-    function navIconWarn(message, error) {
-      try {
-        if (typeof console !== "undefined" && console && typeof console.warn === "function") {
-          console.warn(message, error);
-        }
-      } catch {
-        /* logging must never break the fallback */
-      }
-    }
-
-    /**
-     * Whether this engine can paint the glyph as a CSS mask. If it cannot, the
-     * `::before` box would show as a solid square, so the plugin keeps the
-     * shell's gear instead of degrading visually.
-     */
-    function supportsMaskImage() {
-      try {
-        // Note: this bundle also has a local `CSS` stylesheet constant, so read
-        // the browser API from globalThis rather than the bare identifier.
-        const css = typeof globalThis === "undefined" ? undefined : globalThis.CSS;
-        if (!css || typeof css.supports !== "function") return true;
-        return (
-          css.supports("mask-image", 'url("x")') ||
-          css.supports("-webkit-mask-image", 'url("x")')
-        );
-      } catch {
-        return false;
-      }
-    }
-
-    /**
-     * Install the settings-nav glyph, or permanently fall back to the shell's
-     * gear when anything goes wrong. Never throws.
-     */
-    function installSettingsNavIcon(ctx, resolveLabel) {
-      try {
-        if (typeof document === "undefined" || document === null) return;
-        if (typeof document.querySelectorAll !== "function") return;
-        ctx.effect(() => {
-          let styleTag = null;
-          let observer = null;
-          let disposed = false;
-          let scheduled = false;
-          const markedRows = new Set();
-          /** Undo every DOM change; safe to call repeatedly and from cleanup. */
-          const fallback = (reason) => {
-            if (disposed) return;
-            disposed = true;
-            try {
-              if (observer) observer.disconnect();
-            } catch {
-              /* observer already gone */
-            }
-            observer = null;
-            for (const row of Array.from(markedRows)) {
-              try {
-                row.removeAttribute(NAV_ICON_MARKER);
-              } catch {
-                /* row may be gone */
-              }
-            }
-            markedRows.clear();
-            try {
-              if (styleTag && typeof styleTag.remove === "function") styleTag.remove();
-            } catch {
-              /* style may be detached already */
-            }
-            styleTag = null;
-            if (reason !== undefined) {
-              navIconWarn(
-                "[archive-ext] settings nav icon disabled; using the default settings icon",
-                reason,
-              );
-            }
-          };
-          const sync = () => {
-            if (disposed) return;
-            try {
-              const wanted = resolveLabel();
-              const rows = document.querySelectorAll(NAV_ICON_SELECTOR);
-              const seen = new Set();
-              for (const row of Array.from(rows)) {
-                seen.add(row);
-                if (isOwnNavRow(row && row.textContent, wanted)) {
-                  try {
-                    row.setAttribute(NAV_ICON_MARKER, "");
-                    markedRows.add(row);
-                  } catch {
-                    /* row may be gone */
-                  }
-                } else {
-                  try {
-                    row.removeAttribute(NAV_ICON_MARKER);
-                  } catch {
-                    /* row may be gone */
-                  }
-                  markedRows.delete(row);
-                }
-              }
-              for (const row of Array.from(markedRows)) {
-                if (seen.has(row)) continue;
-                try {
-                  row.removeAttribute(NAV_ICON_MARKER);
-                } catch {
-                  /* row may be gone */
-                }
-                markedRows.delete(row);
-              }
-            } catch (error) {
-              fallback(error);
-            }
-          };
-          const schedule = () => {
-            if (scheduled || disposed) return;
-            scheduled = true;
-            const run = () => {
-              scheduled = false;
-              sync();
-            };
-            try {
-              if (typeof queueMicrotask === "function") queueMicrotask(run);
-              else run();
-            } catch {
-              run();
-            }
-          };
-          try {
-            if (!document.head || !document.body) return fallback;
-            if (!supportsMaskImage()) return fallback;
-            styleTag = document.createElement("style");
-            styleTag.setAttribute("data-plugin", "archive-ext");
-            styleTag.setAttribute("data-plugin-css", "archive-ext/settings-nav-icon");
-            styleTag.textContent = navIconCss(navIconMaskUrl());
-            document.head.appendChild(styleTag);
-            if (typeof MutationObserver === "function") {
-              observer = new MutationObserver(schedule);
-              observer.observe(document.body, {
-                childList: true,
-                subtree: true,
-                characterData: true,
-              });
-            }
-            sync();
-          } catch (error) {
-            fallback(error);
-          }
-          return fallback;
-        }, "archive-ext: settings nav icon");
-      } catch (error) {
-        navIconWarn(
-          "[archive-ext] settings nav icon unavailable; using the default settings icon",
-          error,
-        );
-      }
-    }
 
     // ---- plugin apply --------------------------------------------------------
     async function apply(ctx) {
@@ -1592,14 +1394,16 @@ window.__ModuleLoader__.load({
         ),
       );
 
-      try {
-        installSettingsNavIcon(ctx, () => t("settings.nav"));
-      } catch (error) {
-        navIconWarn(
-          "[archive-ext] settings nav icon setup failed; using the default settings icon",
-          error,
-        );
-      }
+      ctx.slots.inject("settings.section.icon", () =>
+        ctx.slots.register(
+          {
+            name: "settings.section.icon",
+            id: "archive-ext",
+            locale: NS,
+          },
+          SettingsNavIcon,
+        ),
+      );
 
       ctx.slots.inject("sidebar.footer.action", () =>
         ctx.slots.register(
@@ -1620,18 +1424,6 @@ window.__ModuleLoader__.load({
     // Exposed for test/verify-client-apply.mjs: which host primitives this build
     // resolved, so a missing export is visible instead of silently degrading.
     exports.CLIENT_UI = { hostPrimitive, HostSwitch, HostButton, HostModal, createStore };
-    // Exposed for test/nav-icon.test.mjs: the enhancement is DOM-only and its
-    // failure paths must stay reachable from a test harness.
-    exports.CLIENT_NAV_ICON = {
-      installSettingsNavIcon,
-      isOwnNavRow,
-      navIconCss,
-      navIconMaskSvg,
-      navIconMaskUrl,
-      NAV_ICON_MARKER,
-      NAV_ICON_SELECTOR,
-      NAV_ICON_SIZE,
-    };
     return module.exports;
   },
 });
